@@ -49,7 +49,8 @@ fun VisualizerCard(
     val totalVolume by mixViewModel.totalVolume.collectAsState()
     val settingsState by settingsViewModel.uiState.collectAsState()
     
-    val buttonColor = predictedColor
+    // Use screen color for dispense button instead of predicted color
+    val buttonColor = color
     val contentColor = if (buttonColor.getBrightness() > 0.5f) Color.Black else Color.White
 
     val requestedImageUri by mixViewModel.currentImageUri.collectAsState()

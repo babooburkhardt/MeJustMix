@@ -1,14 +1,19 @@
 package com.example.mejustmix.ui
 
 import android.net.Uri
+import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.Spring
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.grid.GridCells
@@ -23,6 +28,7 @@ import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.WaterDrop
 import androidx.compose.material.icons.filled.FilterList
 import androidx.compose.material.icons.outlined.Palette
+import androidx.compose.material.icons.outlined.PhotoLibrary
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -30,11 +36,14 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.toArgb
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -85,10 +94,15 @@ fun Library(mixViewModel: MixViewModel) {
             
             Spacer(modifier = Modifier.height(16.dp))
 
-            // Content based on selected tab
-            when (selectedTab) {
-                0 -> ColorLibraryContent(mixViewModel, libraryItems)
-                1 -> PhotoLibraryContent(mixViewModel, photoLibrary)
+            // Content based on selected tab with animation
+            AnimatedContent(
+                targetState = selectedTab,
+                label = "tabContent"
+            ) { tab ->
+                when (tab) {
+                    0 -> ColorLibraryContent(mixViewModel, libraryItems)
+                    1 -> PhotoLibraryContent(mixViewModel, photoLibrary)
+                }
             }
         }
     }
@@ -211,11 +225,34 @@ fun ColorLibraryContent(
     }
 
     if (libraryItems.isEmpty()) {
-        Box(
-            modifier = Modifier.fillMaxWidth().height(100.dp),
-            contentAlignment = Alignment.Center
+        // Beautiful empty state
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(vertical = 48.dp, horizontal = 24.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center
         ) {
-            Text("No saved colors yet.", color = Color.Gray)
+            Icon(
+                Icons.Outlined.Palette,
+                contentDescription = null,
+                modifier = Modifier.size(80.dp),
+                tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.3f)
+            )
+            Spacer(Modifier.height(16.dp))
+            Text(
+                "No colors saved yet",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
+            )
+            Spacer(Modifier.height(8.dp))
+            Text(
+                "Mix a color and tap Save to\nbuild your palette",
+                style = MaterialTheme.typography.bodyMedium,
+                color = Color.Gray,
+                textAlign = TextAlign.Center
+            )
         }
     } else {
         Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
@@ -343,11 +380,34 @@ fun PhotoLibraryContent(
     }
 
     if (photoLibrary.isEmpty()) {
-        Box(
-            modifier = Modifier.fillMaxWidth().height(100.dp),
-            contentAlignment = Alignment.Center
+        // Beautiful empty state
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(vertical = 48.dp, horizontal = 24.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center
         ) {
-            Text("No saved photos yet.", color = Color.Gray)
+            Icon(
+                Icons.Outlined.PhotoLibrary,
+                contentDescription = null,
+                modifier = Modifier.size(80.dp),
+                tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.3f)
+            )
+            Spacer(Modifier.height(16.dp))
+            Text(
+                "No photos saved yet",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
+            )
+            Spacer(Modifier.height(8.dp))
+            Text(
+                "Upload a photo and tap Save to\ncreate your collection",
+                style = MaterialTheme.typography.bodyMedium,
+                color = Color.Gray,
+                textAlign = TextAlign.Center
+            )
         }
     } else {
         Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
@@ -645,6 +705,16 @@ fun ColorTile(
     onClick: () -> Unit,
     onLongClick: () -> Unit
 ) {
+    var isPressed by remember { mutableStateOf(false) }
+    val scale by animateFloatAsState(
+        targetValue = if (isPressed) 0.92f else 1f,
+        animationSpec = spring(
+            dampingRatio = Spring.DampingRatioMediumBouncy,
+            stiffness = Spring.StiffnessLow
+        ),
+        label = "scale"
+    )
+    
     Column(
         horizontalAlignment = Alignment.CenterHorizontally,
         modifier = Modifier.width(68.dp)
@@ -652,13 +722,26 @@ fun ColorTile(
         Box(
             modifier = Modifier
                 .size(60.dp)
+                .graphicsLayer {
+                    scaleX = scale
+                    scaleY = scale
+                }
                 .clip(RoundedCornerShape(16.dp))
                 .background(color)
+                .border(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha=0.2f), RoundedCornerShape(16.dp))
                 .combinedClickable(
                     onClick = onClick,
                     onLongClick = onLongClick
                 )
-                .border(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha=0.2f), RoundedCornerShape(16.dp))
+                .pointerInput(Unit) {
+                    detectTapGestures(
+                        onPress = {
+                            isPressed = true
+                            tryAwaitRelease()
+                            isPressed = false
+                        }
+                    )
+                }
         )
         
         if (name.isNotEmpty()) {
@@ -682,6 +765,16 @@ fun PhotoTile(
     onClick: () -> Unit,
     onLongClick: () -> Unit
 ) {
+    var isPressed by remember { mutableStateOf(false) }
+    val scale by animateFloatAsState(
+        targetValue = if (isPressed) 0.92f else 1f,
+        animationSpec = spring(
+            dampingRatio = Spring.DampingRatioMediumBouncy,
+            stiffness = Spring.StiffnessLow
+        ),
+        label = "scale"
+    )
+    
     Column(
         horizontalAlignment = Alignment.CenterHorizontally,
         modifier = Modifier.width(68.dp)
@@ -689,12 +782,25 @@ fun PhotoTile(
         Box(
             modifier = Modifier
                 .size(60.dp)
+                .graphicsLayer {
+                    scaleX = scale
+                    scaleY = scale
+                }
                 .clip(RoundedCornerShape(16.dp))
+                .border(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha=0.2f), RoundedCornerShape(16.dp))
                 .combinedClickable(
                     onClick = onClick,
                     onLongClick = onLongClick
                 )
-                .border(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha=0.2f), RoundedCornerShape(16.dp))
+                .pointerInput(Unit) {
+                    detectTapGestures(
+                        onPress = {
+                            isPressed = true
+                            tryAwaitRelease()
+                            isPressed = false
+                        }
+                    )
+                }
         ) {
             AsyncImage(
                 model = uriString,

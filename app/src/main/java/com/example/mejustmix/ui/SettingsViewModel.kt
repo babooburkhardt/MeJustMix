@@ -10,6 +10,7 @@ import com.example.mejustmix.services.PigmentStrengths
 import com.example.mejustmix.services.KSColor
 import com.example.mejustmix.services.KSPigmentDatabase
 import com.example.mejustmix.services.KubelkaMunkColorMixing
+import com.example.mejustmix.utils.PulseModeCalculator
 import com.google.gson.Gson
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -22,7 +23,12 @@ data class PumpConfig(
     val calibration: String = "100.0", // steps per mL
     val currentVolumeMl: Float = 100f,
     val maxVolumeMl: Float = 100f,
-    val colorArgb: Int = Color.Cyan.toArgb() 
+    val colorArgb: Int = Color.Cyan.toArgb(),
+    
+    // Pulse mode calibration
+    val stepsPerPulse: Float = 50f,      // Steps for one complete roller rotation
+    val mlPerPulse: Float = 0.5f,        // mL dispensed per pulse (calibrated)
+    val pulseHomeOffset: Float = 0f      // Steps from current position to pulse boundary (0 = at home)
 )
 
 data class SettingsUiState(
@@ -56,7 +62,11 @@ data class SettingsUiState(
     
     // Display settings
     val showRealPaintPreview: Boolean = false,
-    val realPaintPreviewIntensity: Float = 0.7f
+    val realPaintPreviewIntensity: Float = 0.7f,
+    
+    // Pulse mode settings
+    val usePulseMode: Boolean = false,
+    val pulseMinimum: Int = 1              // Minimum pulses for any non-zero component
 )
 
 class SettingsViewModel(application: Application) : AndroidViewModel(application) {
@@ -317,4 +327,184 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
         _uiState.value = newState
         saveSettings()
     }
+    
+    // --- Pulse Mode Methods ---
+    
+    fun togglePulseMode(enabled: Boolean) {
+        _uiState.update { it.copy(usePulseMode = enabled) }
+        saveSettings()
+    }
+    
+    fun updatePulseMinimum(minimum: Int) {
+        _uiState.update { it.copy(pulseMinimum = minimum.coerceAtLeast(1)) }
+        saveSettings()
+    }
+    
+    fun updatePumpPulseConfig(
+        pumpIndex: Int,
+        stepsPerPulse: Float? = null,
+        mlPerPulse: Float? = null,
+        pulseHomeOffset: Float? = null
+    ) {
+        _uiState.update { state ->
+            val newPumps = state.pumps.toMutableList()
+            val pump = newPumps[pumpIndex]
+            newPumps[pumpIndex] = pump.copy(
+                stepsPerPulse = stepsPerPulse ?: pump.stepsPerPulse,
+                mlPerPulse = mlPerPulse ?: pump.mlPerPulse,
+                pulseHomeOffset = pulseHomeOffset ?: pump.pulseHomeOffset
+            )
+            state.copy(pumps = newPumps)
+        }
+        saveSettings()
+    }
+    
+    /**
+     * Reset pulse home offset to 0 (call after homing).
+     */
+    fun setPumpHomed(pumpIndex: Int) {
+        updatePumpPulseConfig(pumpIndex, pulseHomeOffset = 0f)
+    }
+    
+    /**
+     * Update pulse home offset after partial movement.
+     */
+    fun updatePumpHomeOffset(pumpIndex: Int, stepsDispensed: Float) {
+        _uiState.update { state ->
+            val pump = state.pumps[pumpIndex]
+            val stepsPerPulse = pump.stepsPerPulse
+            // New offset = (old offset + steps dispensed) mod stepsPerPulse
+            val newOffset = (pump.pulseHomeOffset + stepsDispensed) % stepsPerPulse
+            val newPumps = state.pumps.toMutableList()
+            newPumps[pumpIndex] = pump.copy(pulseHomeOffset = newOffset)
+            state.copy(pumps = newPumps)
+        }
+        saveSettings()
+    }
+    
+    // --- Pulse Mode Scroll Wheel Functions ---
+    
+    /**
+     * Track the visual offset from home without moving the pump.
+     * This is called by the scroll wheel to remember where home should be.
+     * 
+     * @param pumpIndex Index of the pump
+     * @param offsetSteps The tracked offset in steps from the current position
+     */
+    fun updatePumpTrackedOffset(pumpIndex: Int, offsetSteps: Float) {
+        _uiState.update { state ->
+            val updatedPumps = state.pumps.toMutableList()
+            val pump = updatedPumps[pumpIndex]
+            updatedPumps[pumpIndex] = pump.copy(
+                pulseHomeOffset = offsetSteps
+            )
+            state.copy(pumps = updatedPumps)
+        }
+        // Don't save on every scroll - only on successful prime
+    }
+    
+    /**
+     * Prime the pump to move it to the tracked home position.
+     * This is the button that actually sends G-code to move the pump.
+     * 
+     * @param pumpIndex Index of the pump to prime
+     */
+    fun primePumpToHome(pumpIndex: Int) {
+        val pump = _uiState.value.pumps.getOrNull(pumpIndex) ?: return
+        val stepsPerPulse = PulseModeCalculator.MotorSpecs.STEPS_PER_PULSE
+        
+        // Calculate steps to move to reach home boundary
+        val currentOffset = pump.pulseHomeOffset
+        val stepsToMove = (currentOffset % stepsPerPulse).toInt()
+        
+        // TODO: Send G-code command to prime
+        // Example: sendGCodeToController("G0 ${pump.axis}$stepsToMove")
+        
+        // After successful prime, the pump is now at home (offset = 0)
+        _uiState.update { state ->
+            val updatedPumps = state.pumps.toMutableList()
+            updatedPumps[pumpIndex] = pump.copy(
+                pulseHomeOffset = 0f  // Reset to 0 after successful prime to home
+            )
+            state.copy(pumps = updatedPumps)
+        }
+        saveSettings()
+        showToast("${pump.name} primed to home position")
+    }
+    
+    /**
+     * Update a pump's mL per pulse calibration value.
+     * Steps per pulse is known from motor specs, only mL/pulse needs calibration.
+     * 
+     * @param pumpIndex Index of the pump
+     * @param mlPerPulse Measured mL dispensed per pulse
+     */
+    fun updatePumpMlPerPulse(pumpIndex: Int, mlPerPulse: Float) {
+        _uiState.update { state ->
+            val updatedPumps = state.pumps.toMutableList()
+            val pump = updatedPumps[pumpIndex]
+            
+            // Also update stepsPerPulse from motor specs if not set
+            val stepsPerPulse = if (pump.stepsPerPulse <= 0f) {
+                PulseModeCalculator.MotorSpecs.STEPS_PER_PULSE
+            } else {
+                pump.stepsPerPulse
+            }
+            
+            updatedPumps[pumpIndex] = pump.copy(
+                stepsPerPulse = stepsPerPulse,
+                mlPerPulse = mlPerPulse
+            )
+            
+            state.copy(pumps = updatedPumps)
+        }
+        saveSettings()
+        showToast("${_uiState.value.pumps[pumpIndex].name} calibration saved: ${String.format("%.3f", mlPerPulse)} mL/pulse")
+    }
+    
+    /**
+     * Dispense a specific number of pulses for calibration testing.
+     * The pump should already be at home position before calling this.
+     * 
+     * @param pumpIndex Index of the pump
+     * @param pulseCount Number of pulses to dispense
+     */
+    fun dispensePulsesForCalibration(pumpIndex: Int, pulseCount: Int) {
+        val pump = _uiState.value.pumps.getOrNull(pumpIndex) ?: return
+        val stepsPerPulse = if (pump.stepsPerPulse > 0) pump.stepsPerPulse else PulseModeCalculator.MotorSpecs.STEPS_PER_PULSE
+        val totalSteps = (pulseCount * stepsPerPulse).toInt()
+        
+        // TODO: Send G-code command to dispense
+        // Example: sendGCodeToController("G0 ${pump.axis}$totalSteps")
+        
+        // After dispensing, update the offset (pump has moved)
+        _uiState.update { state ->
+            val updatedPumps = state.pumps.toMutableList()
+            updatedPumps[pumpIndex] = pump.copy(
+                pulseHomeOffset = (totalSteps % stepsPerPulse)  // Track where we are now
+            )
+            state.copy(pumps = updatedPumps)
+        }
+        
+        showToast("Dispensing $pulseCount pulses from ${pump.name}")
+    }
+    
+    // TODO: Implement this based on your motor controller communication
+    // Example implementations:
+    /*
+    private fun sendGCodeToController(gcode: String) {
+        // If using HTTP:
+        // val url = "http://${_uiState.value.ipAddress}:${_uiState.value.webPortalPort}/gcode"
+        // httpClient.post(url) { body = gcode }
+        
+        // If using WebSocket:
+        // webSocket.send(gcode)
+        
+        // If using Serial:
+        // serialPort.write(gcode.toByteArray())
+        
+        // Placeholder for now:
+        println("G-code: $gcode")
+    }
+    */
 }

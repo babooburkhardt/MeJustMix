@@ -1,5 +1,10 @@
 package com.example.mejustmix.ui
 
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
@@ -16,6 +21,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.outlined.Lightbulb
 import androidx.compose.material.icons.outlined.Save
 import androidx.compose.material3.ButtonDefaults
@@ -24,9 +30,11 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -38,6 +46,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import kotlinx.coroutines.delay
 import kotlin.math.roundToInt
 
 @Composable
@@ -54,6 +63,16 @@ fun ControlPanel(
     val settingsState by settingsViewModel.uiState.collectAsState()
 
     var showSaveDialog by rememberSaveable { mutableStateOf(false) }
+    var showSaveSuccess by remember { mutableStateOf(false) }
+    var savedFolderName by remember { mutableStateOf("") }
+
+    // Auto-dismiss success message after 2 seconds
+    LaunchedEffect(showSaveSuccess) {
+        if (showSaveSuccess) {
+            delay(2000)
+            showSaveSuccess = false
+        }
+    }
 
     if (showSaveDialog) {
         SaveColorDialog(
@@ -61,7 +80,9 @@ fun ControlPanel(
             onDismissRequest = { showSaveDialog = false },
             onSave = { folderName ->
                 mixViewModel.saveColorToLibrary(folderName)
+                savedFolderName = folderName
                 showSaveDialog = false
+                showSaveSuccess = true
             }
         )
     }
@@ -74,6 +95,46 @@ fun ControlPanel(
         verticalArrangement = Arrangement.spacedBy(20.dp)
     ) {
         val isOutOfGamut by mixViewModel.isOutOfGamut.collectAsState()
+
+        // Save success feedback
+        AnimatedVisibility(
+            visible = showSaveSuccess,
+            enter = slideInVertically { -it } + fadeIn(),
+            exit = slideOutVertically { -it } + fadeOut()
+        ) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(
+                        MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.3f),
+                        RoundedCornerShape(12.dp)
+                    )
+                    .border(
+                        1.dp,
+                        MaterialTheme.colorScheme.primary.copy(alpha = 0.5f),
+                        RoundedCornerShape(12.dp)
+                    )
+                    .padding(12.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Check,
+                    contentDescription = "Success",
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier
+                        .padding(end = 12.dp)
+                        .size(24.dp)
+                )
+                Column {
+                    Text(
+                        text = "Saved to $savedFolderName!",
+                        style = MaterialTheme.typography.bodyMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                }
+            }
+        }
 
         if (isOutOfGamut && settingsState.showRealityCheck) {
             Row(

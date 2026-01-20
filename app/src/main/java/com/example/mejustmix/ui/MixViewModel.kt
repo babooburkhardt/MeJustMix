@@ -397,13 +397,42 @@ class MixViewModel @JvmOverloads constructor(
                     _paintMix.value
                 }
     
-                val gcode = GCodeGenerator.generateMixingScript(
-                    mix = mixToSend,
-                    totalVolumeMl = dispenseVolume, 
-                    retractionSteps = _retraction.value,
-                    pumps = settings.pumps,
-                    flowRateMlPerSec = settings.flowRate.toFloatOrNull() ?: 2.0f
-                )
+                val gcode: List<String>
+                var actualVolume = dispenseVolume
+                
+                if (settings.usePulseMode) {
+                    // Pulse mode - dispense in whole pulses
+                    val pulseResult = GCodeGenerator.generatePulseMixingScript(
+                        mix = mixToSend,
+                        totalVolumeMl = dispenseVolume,
+                        retractionSteps = _retraction.value,
+                        pumps = settings.pumps,
+                        flowRateMlPerSec = settings.flowRate.toFloatOrNull() ?: 2.0f,
+                        pulseMinimum = settings.pulseMinimum
+                    )
+                    gcode = pulseResult.commands
+                    actualVolume = pulseResult.actualVolumeMl
+                    
+                    // Log pulse info
+                    val pulseInfo = pulseResult.pulseCounts.entries
+                        .filter { it.value > 0 }
+                        .joinToString(", ") { "${it.key}:${it.value}" }
+                    addToTerminalHistory(">> PULSE MODE: $pulseInfo (${String.format("%.2f", actualVolume)} mL actual)")
+                    
+                    if (pulseResult.scaleFactor > 1f) {
+                        addToTerminalHistory(">> Scaled up ${String.format("%.1f", pulseResult.scaleFactor)}x to meet minimum pulses")
+                    }
+                } else {
+                    // Standard mL mode
+                    gcode = GCodeGenerator.generateMixingScript(
+                        mix = mixToSend,
+                        totalVolumeMl = dispenseVolume, 
+                        retractionSteps = _retraction.value,
+                        pumps = settings.pumps,
+                        flowRateMlPerSec = settings.flowRate.toFloatOrNull() ?: 2.0f,
+                        usePulseMode = false
+                    )
+                }
                 
                 if (gcode.isEmpty()) {
                      _pumpDepletionWarning.value = "Error: Generated G-Code is empty."
@@ -415,7 +444,7 @@ class MixViewModel @JvmOverloads constructor(
                 addToHistory(_paintMix.value, _color.value)
                 settingsViewModel.consumePaint(
                     mix = mixToSend, 
-                    totalVolume = dispenseVolume,
+                    totalVolume = actualVolume,  // Use actual volume (may differ in pulse mode)
                     onPumpDepleted = { pumpName ->
                         _pumpDepletionWarning.value = "$pumpName is empty!"
                     }
@@ -488,6 +517,139 @@ class MixViewModel @JvmOverloads constructor(
                 fluidNCService?.sendMultiple(gcode)
             } catch (e: Exception) {
                 addToTerminalHistory(">> Error retracting: ${e.message}")
+            } finally {
+                _isSending.value = false
+            }
+        }
+    }
+    
+    // --- Pulse Mode Functions ---
+    
+    /**
+     * Dispense a specific number of pulses for calibration.
+     */
+    fun dispensePulses(pumpIndex: Int, pulseCount: Int, stepsPerPulse: Float) {
+        viewModelScope.launch(Dispatchers.Default) {
+            _isSending.value = true
+            try {
+                val settings = settingsViewModel.uiState.value
+                val pump = settings.pumps[pumpIndex]
+                val flowRate = settings.flowRate.toFloatOrNull() ?: 2.0f
+                
+                // Create a temporary pump config with the test stepsPerPulse
+                val testPump = pump.copy(stepsPerPulse = stepsPerPulse)
+                
+                val gcode = GCodeGenerator.generatePulsePrimeScript(
+                    pump = testPump,
+                    pulseCount = pulseCount,
+                    flowRateMlPerSec = flowRate
+                )
+                
+                addToTerminalHistory(">> Dispensing $pulseCount pulses (${(pulseCount * stepsPerPulse).toInt()} steps)")
+                fluidNCService?.sendMultiple(gcode)
+            } catch (e: Exception) {
+                addToTerminalHistory(">> Error dispensing pulses: ${e.message}")
+            } finally {
+                _isSending.value = false
+            }
+        }
+    }
+    
+    /**
+     * Jog a pump by a specific number of steps (for visual homing alignment).
+     */
+    fun jogPump(pumpIndex: Int, steps: Int, stepsPerPulse: Float) {
+        viewModelScope.launch(Dispatchers.Default) {
+            _isSending.value = true
+            try {
+                val settings = settingsViewModel.uiState.value
+                val pump = settings.pumps[pumpIndex]
+                val flowRate = settings.flowRate.toFloatOrNull() ?: 2.0f
+                
+                // Calculate feed rate from stepsPerPulse
+                val mlPerPulse = pump.mlPerPulse
+                val stepsPerMl = if (mlPerPulse > 0) stepsPerPulse / mlPerPulse else 100f
+                val feedRate = (flowRate * stepsPerMl * 60).toInt().coerceAtMost(12000)
+                
+                val direction = if (steps >= 0) "forward" else "backward"
+                addToTerminalHistory(">> Jogging ${pump.name} $direction ${kotlin.math.abs(steps)} steps")
+                
+                val gcode = listOf(
+                    "G92 ${pump.axis}0",
+                    "G91",
+                    "G1 ${pump.axis}$steps F$feedRate",
+                    "G90"
+                )
+                fluidNCService?.sendMultiple(gcode)
+            } catch (e: Exception) {
+                addToTerminalHistory(">> Error jogging pump: ${e.message}")
+            } finally {
+                _isSending.value = false
+            }
+        }
+    }
+    
+    /**
+     * Home a single pump to its pulse boundary.
+     */
+    fun homePump(pumpIndex: Int) {
+        viewModelScope.launch(Dispatchers.Default) {
+            _isSending.value = true
+            try {
+                val settings = settingsViewModel.uiState.value
+                val pump = settings.pumps[pumpIndex]
+                val flowRate = settings.flowRate.toFloatOrNull() ?: 2.0f
+                
+                val (gcode, volumeDispensed) = GCodeGenerator.generatePulseHomeScript(
+                    pump = pump,
+                    flowRateMlPerSec = flowRate
+                )
+                
+                if (gcode.isNotEmpty()) {
+                    addToTerminalHistory(">> Homing ${pump.name} pump...")
+                    fluidNCService?.sendMultiple(gcode)
+                    settingsViewModel.setPumpHomed(pumpIndex)
+                    addToTerminalHistory(">> ${pump.name} homed (dispensed ${String.format("%.2f", volumeDispensed)} mL)")
+                } else {
+                    addToTerminalHistory(">> ${pump.name} already at home position")
+                }
+            } catch (e: Exception) {
+                addToTerminalHistory(">> Error homing pump: ${e.message}")
+            } finally {
+                _isSending.value = false
+            }
+        }
+    }
+    
+    /**
+     * Home all pumps to their pulse boundaries.
+     */
+    fun homeAllPumps() {
+        viewModelScope.launch(Dispatchers.Default) {
+            _isSending.value = true
+            try {
+                val settings = settingsViewModel.uiState.value
+                val flowRate = settings.flowRate.toFloatOrNull() ?: 2.0f
+                
+                val gcode = GCodeGenerator.generateAllPumpsHomeScript(
+                    pumps = settings.pumps,
+                    flowRateMlPerSec = flowRate
+                )
+                
+                if (gcode.size > 2) {  // More than just G91/G90
+                    addToTerminalHistory(">> Homing all pumps...")
+                    fluidNCService?.sendMultiple(gcode)
+                    
+                    // Mark all pumps as homed
+                    settings.pumps.indices.forEach { i ->
+                        settingsViewModel.setPumpHomed(i)
+                    }
+                    addToTerminalHistory(">> All pumps homed")
+                } else {
+                    addToTerminalHistory(">> All pumps already at home positions")
+                }
+            } catch (e: Exception) {
+                addToTerminalHistory(">> Error homing pumps: ${e.message}")
             } finally {
                 _isSending.value = false
             }
