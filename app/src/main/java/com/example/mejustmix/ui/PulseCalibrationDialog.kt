@@ -57,11 +57,13 @@ fun PulseCalibrationDialog(
     var calibrationRuns by remember { mutableStateOf(listOf<CalibrationRun>()) }
     var showHelp by remember { mutableStateOf(false) }
     var showSaveConfirmation by remember { mutableStateOf(false) }
+    var showMotorConfigDialog by remember { mutableStateOf(false) }
+    var customStepsPerPulse by remember { mutableStateOf<Float?>(null) }
     
     val scope = rememberCoroutineScope()
     
-    // Use pump's motor specs - using defaults for now
-    val stepsPerPulse = PulseModeCalculator.calculateStepsPerPulse(
+    // Use custom steps per pulse if set, otherwise calculate from motor specs
+    val stepsPerPulse = customStepsPerPulse ?: PulseModeCalculator.calculateStepsPerPulse(
         stepAngle = 1.8f,      // Default NEMA 17
         gearReduction = 4f,    // Default 1:4
         rollerCount = 3        // Default 3 rollers
@@ -135,6 +137,74 @@ fun PulseCalibrationDialog(
         )
     }
 
+    // Motor config edit dialog
+    if (showMotorConfigDialog) {
+        var stepsPerPulseText by remember { mutableStateOf(stepsPerPulse.toInt().toString()) }
+        
+        AlertDialog(
+            onDismissRequest = { showMotorConfigDialog = false },
+            title = { Text("Edit Motor Configuration") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Text("Adjust steps per pulse for your motor setup:", 
+                        style = MaterialTheme.typography.bodyMedium)
+                    
+                    OutlinedTextField(
+                        value = stepsPerPulseText,
+                        onValueChange = { stepsPerPulseText = it },
+                        label = { Text("Steps per pulse") },
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                        singleLine = true,
+                        isError = stepsPerPulseText.toIntOrNull() == null || stepsPerPulseText.toIntOrNull() ?: 0 < 50,
+                        supportingText = {
+                            val value = stepsPerPulseText.toIntOrNull()
+                            when {
+                                value == null -> Text("Enter a valid number", color = MaterialTheme.colorScheme.error)
+                                value < 50 -> Text("Value seems too low (min: 50)", color = MaterialTheme.colorScheme.error)
+                                value > 1000 -> Text("⚠️ Very high value", color = MaterialTheme.colorScheme.error)
+                                else -> Text("Typical range: 200-400 steps")
+                            }
+                        }
+                    )
+                    
+                    Spacer(Modifier.height(4.dp))
+                    Text("Default: 267 steps (1.8° motor, 1:4 gear, 3 rollers)", 
+                        style = MaterialTheme.typography.bodySmall,
+                        color = Color.Gray)
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        val newValue = stepsPerPulseText.toIntOrNull()?.toFloat()
+                        if (newValue != null && newValue >= 50) {
+                            customStepsPerPulse = newValue
+                            showMotorConfigDialog = false
+                        }
+                    },
+                    enabled = stepsPerPulseText.toIntOrNull()?.let { it >= 50 } == true
+                ) {
+                    Text("Save")
+                }
+            },
+            dismissButton = {
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    if (customStepsPerPulse != null) {
+                        TextButton(onClick = {
+                            customStepsPerPulse = null
+                            showMotorConfigDialog = false
+                        }) {
+                            Text("Reset to Default")
+                        }
+                    }
+                    TextButton(onClick = { showMotorConfigDialog = false }) {
+                        Text("Cancel")
+                    }
+                }
+            }
+        )
+    }
+
     Dialog(
         onDismissRequest = onDismiss,
         properties = DialogProperties(usePlatformDefaultWidth = false)
@@ -173,21 +243,37 @@ fun PulseCalibrationDialog(
                     }
                 }
                 
-                // Motor specs info
-                Card(colors = CardDefaults.cardColors(
-                    containerColor = MaterialTheme.colorScheme.tertiaryContainer.copy(alpha = 0.2f)
-                )) {
-                    Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                        Text("Motor Configuration:", style = MaterialTheme.typography.labelMedium)
-                        Text(
-                            "1.8° motor, 1:4 gear, 3 rollers",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = Color.Gray
-                        )
-                        Text(
-                            "= ${stepsPerPulse.toInt()} steps/pulse",
-                            fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.primary
+                // Motor specs info (clickable)
+                Card(
+                    onClick = { showMotorConfigDialog = true },
+                    colors = CardDefaults.cardColors(
+                        containerColor = MaterialTheme.colorScheme.tertiaryContainer.copy(alpha = 0.2f)
+                    )
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth().padding(12.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                            Text("Motor Configuration:", style = MaterialTheme.typography.labelMedium)
+                            Text(
+                                if (customStepsPerPulse != null) "Custom configuration" 
+                                else "1.8° motor, 1:4 gear, 3 rollers",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = Color.Gray
+                            )
+                            Text(
+                                "= ${stepsPerPulse.toInt()} steps/pulse",
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.primary
+                            )
+                        }
+                        Icon(
+                            Icons.Default.Edit,
+                            contentDescription = "Edit",
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(20.dp)
                         )
                     }
                 }
@@ -368,9 +454,9 @@ fun Step1VisualHoming(
         
         Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.3f))) {
             Column(modifier = Modifier.padding(12.dp)) {
-                Text("Use scroll wheel to track where home should be (doesn't move pump).", fontWeight = FontWeight.Bold)
+                Text("Align scroll wheel with where the rollers currently are.", fontWeight = FontWeight.Bold)
                 Spacer(Modifier.height(4.dp))
-                Text("Align a roller just PAST the compression point.", style = MaterialTheme.typography.bodySmall)
+                Text("(The bottom is where the tubes enter and exit the pump)", style = MaterialTheme.typography.bodySmall, color = Color.Gray)
             }
         }
         
@@ -380,13 +466,6 @@ fun Step1VisualHoming(
             currentOffsetSteps = trackedOffsetSteps,
             onOffsetChange = onOffsetChange,
             modifier = Modifier.fillMaxWidth()
-        )
-        
-        // Show offset in steps
-        Text(
-            "Current offset: ${trackedOffsetSteps.toInt()} steps",
-            style = MaterialTheme.typography.bodySmall,
-            color = Color.Gray
         )
         
         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
@@ -409,16 +488,25 @@ fun Step2Prime(
     onBack: () -> Unit,
     onNext: () -> Unit
 ) {
-    val stepsToMove = (trackedOffsetSteps % stepsPerPulse).toInt()
+    // Calculate forward movement to next home position
+    // Always moves forward to avoid air gaps
+    val currentPhase = ((trackedOffsetSteps % stepsPerPulse) + stepsPerPulse) % stepsPerPulse
+    val stepsToMove = if (currentPhase == 0f) {
+        // Already aligned at home - move forward one full pulse
+        stepsPerPulse.toInt()
+    } else {
+        // Not aligned - move forward to next home position
+        (stepsPerPulse - currentPhase).toInt()
+    }
     
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
         Text("Step 2: Prime to Home", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
         
         Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.tertiaryContainer.copy(alpha = 0.3f))) {
             Column(modifier = Modifier.padding(12.dp)) {
-                Text("Move pump to home position.", fontWeight = FontWeight.Bold)
+                Text("Prime pump forward to home position.", fontWeight = FontWeight.Bold)
                 Spacer(Modifier.height(4.dp))
-                Text("Will move $stepsToMove steps forward.", color = MaterialTheme.colorScheme.primary)
+                Text("Will move $stepsToMove steps forward (removes any air).", color = MaterialTheme.colorScheme.primary)
             }
         }
         

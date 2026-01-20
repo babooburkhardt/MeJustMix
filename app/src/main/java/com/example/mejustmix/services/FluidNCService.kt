@@ -216,10 +216,21 @@ class FluidNCService(
     }
 
     fun sendRealtime(command: String) {
+        // If bypass is enabled, don't send any commands
+        if (bypassVerification) {
+            Log.d(TAG, "Bypass enabled - ignoring realtime command")
+            return
+        }
         sendRaw(command) 
     }
 
     fun sendMultiple(commands: List<String>) {
+        // If bypass is enabled, don't send any commands
+        if (bypassVerification) {
+            Log.d(TAG, "Bypass enabled - ignoring ${commands.size} commands")
+            return
+        }
+        
         Log.d(TAG, "Queueing ${commands.size} commands")
         for (cmd in commands) commandQueue.offer(cmd)
         processNextCommand()

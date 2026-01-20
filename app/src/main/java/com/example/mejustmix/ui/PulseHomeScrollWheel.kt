@@ -263,6 +263,64 @@ private fun PumpWheelCanvas(
         val center = Offset(size.width / 2f, size.height / 2f)
         val radius = size.minDimension / 2f * 0.8f
         
+        // Draw rounded-corner housing box (static, doesn't rotate)
+        val boxSize = radius * 2.2f
+        val boxCornerRadius = 20.dp.toPx()
+        drawRoundRect(
+            color = Color.Gray.copy(alpha = 0.2f),
+            topLeft = Offset(
+                center.x - boxSize / 2f,
+                center.y - boxSize / 2f
+            ),
+            size = androidx.compose.ui.geometry.Size(boxSize, boxSize),
+            cornerRadius = androidx.compose.ui.geometry.CornerRadius(boxCornerRadius),
+            style = Stroke(width = 3.dp.toPx())
+        )
+        
+        // Draw tube boxes (inlet and outlet) at bottom of housing
+        val tubeWidth = 12.dp.toPx()
+        val tubeHeight = 20.dp.toPx()
+        val tubeOffset = boxSize * 0.25f  // Position from center
+        val tubeY = center.y + boxSize / 2f  // Bottom of housing box
+        
+        // Left tube (inlet)
+        drawRect(
+            color = Color.Gray.copy(alpha = 0.3f),
+            topLeft = Offset(
+                center.x - tubeOffset - tubeWidth / 2f,
+                tubeY
+            ),
+            size = androidx.compose.ui.geometry.Size(tubeWidth, tubeHeight)
+        )
+        drawRect(
+            color = Color.Gray.copy(alpha = 0.5f),
+            topLeft = Offset(
+                center.x - tubeOffset - tubeWidth / 2f,
+                tubeY
+            ),
+            size = androidx.compose.ui.geometry.Size(tubeWidth, tubeHeight),
+            style = Stroke(width = 2.dp.toPx())
+        )
+        
+        // Right tube (outlet)
+        drawRect(
+            color = Color.Gray.copy(alpha = 0.3f),
+            topLeft = Offset(
+                center.x + tubeOffset - tubeWidth / 2f,
+                tubeY
+            ),
+            size = androidx.compose.ui.geometry.Size(tubeWidth, tubeHeight)
+        )
+        drawRect(
+            color = Color.Gray.copy(alpha = 0.5f),
+            topLeft = Offset(
+                center.x + tubeOffset - tubeWidth / 2f,
+                tubeY
+            ),
+            size = androidx.compose.ui.geometry.Size(tubeWidth, tubeHeight),
+            style = Stroke(width = 2.dp.toPx())
+        )
+        
         // Draw outer circle (pump body)
         drawCircle(
             color = Color.Gray.copy(alpha = 0.3f),
@@ -271,45 +329,28 @@ private fun PumpWheelCanvas(
             style = Stroke(width = 4.dp.toPx())
         )
         
-        // Draw home position indicator (fixed at top)
-        drawLine(
-            color = if (isAtHome) Color.Green else Color.Red,
-            start = Offset(center.x, center.y - radius - 20.dp.toPx()),
-            end = Offset(center.x, center.y - radius + 10.dp.toPx()),
-            strokeWidth = 6.dp.toPx()
-        )
-        
-        // Draw home position triangle
-        val triangleSize = 15.dp.toPx()
-        val trianglePath = androidx.compose.ui.graphics.Path().apply {
-            moveTo(center.x, center.y - radius - 20.dp.toPx() - triangleSize)
-            lineTo(center.x - triangleSize / 2, center.y - radius - 20.dp.toPx())
-            lineTo(center.x + triangleSize / 2, center.y - radius - 20.dp.toPx())
-            close()
-        }
-        drawPath(
-            path = trianglePath,
-            color = if (isAtHome) Color.Green else Color.Red
-        )
-        
         // Draw 3 rollers rotating around center
         rotate(angle, center) {
             for (i in 0 until 3) {
                 val rollerAngle = (i * 120f) * (PI.toFloat() / 180f)
-                val rollerX = center.x + radius * 0.7f * kotlin.math.cos(rollerAngle)
-                val rollerY = center.y + radius * 0.7f * kotlin.math.sin(rollerAngle)
+                // Moved closer to center (0.55 instead of 0.7) to prevent clipping
+                val rollerX = center.x + radius * 0.55f * kotlin.math.cos(rollerAngle)
+                val rollerY = center.y + radius * 0.55f * kotlin.math.sin(rollerAngle)
+                
+                // Increased roller size (0.3 instead of 0.2) for better visibility
+                val rollerRadius = radius * 0.3f
                 
                 // Draw roller
                 drawCircle(
                     color = pumpColor,
-                    radius = radius * 0.2f,
+                    radius = rollerRadius,
                     center = Offset(rollerX, rollerY)
                 )
                 
                 // Draw roller border
                 drawCircle(
                     color = Color.Black,
-                    radius = radius * 0.2f,
+                    radius = rollerRadius,
                     center = Offset(rollerX, rollerY),
                     style = Stroke(width = 2.dp.toPx())
                 )
@@ -321,17 +362,6 @@ private fun PumpWheelCanvas(
             color = Color.Gray,
             radius = 8.dp.toPx(),
             center = center
-        )
-        
-        // Draw compression zone indicator (where tube is squeezed)
-        val compressionAngle = 30f // degrees
-        drawArc(
-            color = Color.Red.copy(alpha = 0.2f),
-            startAngle = -compressionAngle / 2f - 90f,
-            sweepAngle = compressionAngle,
-            useCenter = true,
-            topLeft = Offset(center.x - radius * 0.85f, center.y - radius * 0.85f),
-            size = androidx.compose.ui.geometry.Size(radius * 1.7f, radius * 1.7f)
         )
     }
 }
@@ -413,29 +443,6 @@ fun CompactPulseHomeWheel(
                 stepsFromHome = stepsFromHome,
                 stepsPerPulse = stepsPerPulse
             )
-        }
-        
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceEvenly
-        ) {
-            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                Text("Steps", style = MaterialTheme.typography.labelSmall)
-                Text(
-                    "${accumulatedSteps.roundToInt()}",
-                    style = MaterialTheme.typography.bodyMedium,
-                    fontWeight = FontWeight.Bold
-                )
-            }
-            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                Text("From Home", style = MaterialTheme.typography.labelSmall)
-                Text(
-                    "${abs(stepsFromHome).roundToInt()}",
-                    style = MaterialTheme.typography.bodyMedium,
-                    fontWeight = FontWeight.Bold,
-                    color = if (isAtHome) Color.Green else Color.Red
-                )
-            }
         }
     }
 }

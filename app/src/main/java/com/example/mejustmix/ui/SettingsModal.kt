@@ -392,7 +392,14 @@ fun SettingsModal(
                                     checked = uiState.bypassConnectionCheck,
                                     onCheckedChange = { settingsViewModel.toggleBypassConnectionCheck(it) }
                                 )
-                                Text("Bypass Connection Check")
+                                Column {
+                                    Text("Bypass Connection Check")
+                                    Text(
+                                        "⚠️ Disables all commands to machine",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.error
+                                    )
+                                }
                             }
                         }
                     }
@@ -451,7 +458,7 @@ fun SettingsModal(
                 }
 
                 // 3. PUMP CONFIGURATION
-                item {
+                item {  
                     SettingsSectionHeader(
                         icon = "💧",
                         title = "Pump Configuration",
@@ -461,8 +468,17 @@ fun SettingsModal(
                     )
                 }
                 
-                if (expandedSection == "pumps") {
-                    itemsIndexed(uiState.pumps) { index, pump ->
+                item {
+                    AnimatedVisibility(
+                        visible = expandedSection == "pumps",
+                        enter = expandVertically() + fadeIn(),
+                        exit = shrinkVertically() + fadeOut()
+                    ) {
+                        Column(
+                            modifier = Modifier.padding(horizontal = 4.dp),
+                            verticalArrangement = Arrangement.spacedBy(12.dp)
+                        ) {
+                            uiState.pumps.forEachIndexed { index, pump ->
                         Card(
                             modifier = Modifier.fillMaxWidth().padding(horizontal = 4.dp),
                             colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f))
@@ -524,6 +540,8 @@ fun SettingsModal(
                                         Text("Refill") 
                                     }
                                 }
+                            }
+                        }
                             }
                         }
                     }

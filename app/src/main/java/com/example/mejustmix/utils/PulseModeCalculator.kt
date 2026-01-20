@@ -79,6 +79,48 @@ object PulseModeCalculator {
     }
     
     /**
+     * Calculate steps for each individual pulse with drift correction.
+     * Since we can only move in whole steps, but stepsPerPulse may be fractional
+     * (e.g., 266.67), we need to distribute the error across pulses to maintain
+     * accuracy over time.
+     * 
+     * This function ensures that after N pulses, the total steps is exactly
+     * N * stepsPerPulse (rounded), preventing drift from accumulating.
+     * 
+     * Example: For 266.67 steps/pulse over 3 pulses:
+     * - Pulse 1: 267 steps (cumulative: 267, target: 266.67, error: +0.33)
+     * - Pulse 2: 267 steps (cumulative: 534, target: 533.33, error: +0.67)
+     * - Pulse 3: 266 steps (cumulative: 800, target: 800.00, error: 0.00) ✓
+     * 
+     * @param pulseCount Number of pulses to dispense
+     * @param stepsPerPulse Fractional steps per pulse (e.g., 266.67)
+     * @param currentStepPosition Current motor position in steps (for drift correction)
+     * @return List of step counts for each pulse, in order
+     */
+    fun pulsesToStepsWithDriftCorrection(
+        pulseCount: Int,
+        stepsPerPulse: Float,
+        currentStepPosition: Float = 0f
+    ): List<Int> {
+        val stepsPerPulseList = mutableListOf<Int>()
+        var cumulativeTarget = currentStepPosition
+        var cumulativeActual = currentStepPosition
+        
+        for (pulseIndex in 0 until pulseCount) {
+            // Calculate target position after this pulse
+            cumulativeTarget += stepsPerPulse
+            
+            // Calculate how many steps we need for this pulse
+            val stepsForThisPulse = (cumulativeTarget - cumulativeActual).roundToInt()
+            
+            stepsPerPulseList.add(stepsForThisPulse)
+            cumulativeActual += stepsForThisPulse
+        }
+        
+        return stepsPerPulseList
+    }
+    
+    /**
      * Calculate pulse count from steps.
      * 
      * @param steps Total motor steps
