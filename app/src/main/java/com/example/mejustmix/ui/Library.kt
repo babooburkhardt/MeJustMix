@@ -3,6 +3,11 @@ package com.example.mejustmix.ui
 import android.net.Uri
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.ExperimentalFoundationApi
@@ -33,6 +38,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.composed
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -41,12 +47,15 @@ import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.window.Dialog
 import coil.compose.AsyncImage
 // EXPLICIT IMPORTS
@@ -55,6 +64,46 @@ import com.example.mejustmix.data.SavedColor
 import com.example.mejustmix.data.SavedPhoto
 import com.example.mejustmix.data.SortOption
 import com.example.mejustmix.data.PhotoFolder
+
+/**
+ * Shimmer effect for loading states
+ */
+fun Modifier.shimmerEffect(): Modifier = composed {
+    var size by remember { mutableStateOf(IntSize.Zero) }
+    val transition = rememberInfiniteTransition(label = "shimmer")
+    val startOffsetX by transition.animateFloat(
+        initialValue = -2 * size.width.toFloat(),
+        targetValue = 2 * size.width.toFloat(),
+        animationSpec = infiniteRepeatable(
+            animation = tween(1000),
+            repeatMode = RepeatMode.Restart
+        ),
+        label = "shimmerOffset"
+    )
+
+    background(
+        brush = Brush.linearGradient(
+            colors = listOf(
+                Color.LightGray.copy(alpha = 0.6f),
+                Color.LightGray.copy(alpha = 0.2f),
+                Color.LightGray.copy(alpha = 0.6f),
+            ),
+            start = androidx.compose.ui.geometry.Offset(startOffsetX, 0f),
+            end = androidx.compose.ui.geometry.Offset(startOffsetX + size.width.toFloat(), size.height.toFloat())
+        )
+    )
+        .onSizeChanged { size = it }
+}
+
+@Composable
+fun LibraryItemSkeleton() {
+    Box(
+        modifier = Modifier
+            .size(60.dp)
+            .clip(RoundedCornerShape(16.dp))
+            .shimmerEffect()
+    )
+}
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable

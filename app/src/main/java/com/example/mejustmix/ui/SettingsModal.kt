@@ -107,6 +107,7 @@ fun SettingsModal(
     var calibrationChooserIndex by rememberSaveable { mutableStateOf<Int?>(null) }
     var showFlowCalibratorForIndex by rememberSaveable { mutableStateOf<Int?>(null) }
     var showKSCalibrationForColor by rememberSaveable { mutableStateOf<String?>(null) }
+    var showPigmentTunerForColor by rememberSaveable { mutableStateOf<String?>(null) }
     var showRetractionCalibrator by rememberSaveable { mutableStateOf(false) }
     var showKubelkaMunkSettings by rememberSaveable { mutableStateOf(false) }
     
@@ -217,17 +218,35 @@ fun SettingsModal(
                         }
                         
                         val isPigment = listOf("Cyan", "Magenta", "Yellow", "Black", "White").any { pump.name.contains(it, ignoreCase = true) }
+                        // Show color calibration for pigments - use Pigment Strength or K/S based on KM setting
                         if (isPigment) {
-                            Button(
-                                onClick = { 
-                                    calibrationChooserIndex = null
-                                    showKSCalibrationForColor = pump.name
-                                },
-                                modifier = Modifier.fillMaxWidth()
-                            ) {
-                                Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.padding(8.dp)) {
-                                    Text("Color Calibration", fontWeight = FontWeight.Bold)
-                                    Text("Scan pigment to set K/S values", style = MaterialTheme.typography.labelSmall)
+                            if (uiState.useKubelkaMunk) {
+                                // KM Enabled: K/S Calibration
+                                Button(
+                                    onClick = { 
+                                        calibrationChooserIndex = null
+                                        showKSCalibrationForColor = pump.name
+                                    },
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.padding(8.dp)) {
+                                        Text("Color Calibration", fontWeight = FontWeight.Bold)
+                                        Text("Scan pigment to set K/S values", style = MaterialTheme.typography.labelSmall)
+                                    }
+                                }
+                            } else {
+                                // KM Disabled: Pigment Strength
+                                Button(
+                                    onClick = { 
+                                        calibrationChooserIndex = null
+                                        showPigmentTunerForColor = pump.name
+                                    },
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.padding(8.dp)) {
+                                        Text("Color Calibration", fontWeight = FontWeight.Bold)
+                                        Text("Visual matching calibration", style = MaterialTheme.typography.labelSmall)
+                                    }
                                 }
                             }
                         }
@@ -262,6 +281,15 @@ fun SettingsModal(
             },
             onDismissRequest = { showKSCalibrationForColor = null },
             mixViewModel = mixViewModel,
+            settingsViewModel = settingsViewModel
+        )
+    }
+    
+    if (showPigmentTunerForColor != null) {
+        PigmentTunerDialog(
+            onDismissRequest = { showPigmentTunerForColor = null },
+            mixViewModel = mixViewModel,
+            lockedColor = showPigmentTunerForColor,
             settingsViewModel = settingsViewModel
         )
     }
@@ -778,6 +806,7 @@ fun SinglePumpSettingsDialog(
     var showChooser by rememberSaveable { mutableStateOf(false) }
     var showFlowCalibrator by rememberSaveable { mutableStateOf(false) }
     var showKSCalibration by rememberSaveable { mutableStateOf(false) }
+    var showPigmentTuner by rememberSaveable { mutableStateOf(false) }
 
     if (showPrimeDialogForAxis != null) {
         PrimingDialog(
@@ -857,17 +886,35 @@ fun SinglePumpSettingsDialog(
                     }
                     
                     val isPigment = listOf("Cyan", "Magenta", "Yellow", "Black", "White").any { pump.name.contains(it, ignoreCase = true) }
+                    // Show color calibration for pigments - use Pigment Strength or K/S based on KM setting
                     if (isPigment) {
-                        Button(
-                            onClick = { 
-                                showChooser = false
-                                showKSCalibration = true
-                            },
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.padding(8.dp)) {
-                                Text("Color Calibration", fontWeight = FontWeight.Bold)
-                                Text("Scan pigment to set K/S values", style = MaterialTheme.typography.labelSmall)
+                        if (uiState.useKubelkaMunk) {
+                            // KM Enabled: K/S Calibration
+                            Button(
+                                onClick = { 
+                                    showChooser = false
+                                    showKSCalibration = true
+                                },
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.padding(8.dp)) {
+                                    Text("Color Calibration", fontWeight = FontWeight.Bold)
+                                    Text("Scan pigment to set K/S values", style = MaterialTheme.typography.labelSmall)
+                                }
+                            }
+                        } else {
+                            // KM Disabled: Pigment Strength
+                            Button(
+                                onClick = { 
+                                    showChooser = false
+                                    showPigmentTuner = true
+                                },
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.padding(8.dp)) {
+                                    Text("Color Calibration", fontWeight = FontWeight.Bold)
+                                    Text("Visual matching calibration", style = MaterialTheme.typography.labelSmall)
+                                }
                             }
                         }
                     }
@@ -898,6 +945,15 @@ fun SinglePumpSettingsDialog(
             },
             onDismissRequest = { showKSCalibration = false },
             mixViewModel = mixViewModel,
+            settingsViewModel = settingsViewModel
+        )
+    }
+    
+    if (showPigmentTuner) {
+        PigmentTunerDialog(
+            onDismissRequest = { showPigmentTuner = false },
+            mixViewModel = mixViewModel,
+            lockedColor = pump.name,
             settingsViewModel = settingsViewModel
         )
     }
