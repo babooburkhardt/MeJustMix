@@ -10,7 +10,7 @@
 For the STLs, and motor mounts, head over to the project page:
 👉 **[MeJustMix on Printables](https://www.printables.com/model/1563458-mejustmix)**
 
-### Bill of Materials (BOM)     ..if i forgot something i apoligize.. still a WIP
+### Bill of Materials (BOM)     ..if i forgot something i apologize.. still a WIP
 To build the full 5-pump mixer, you will need:
 
 **Electronics & Motors**
@@ -35,7 +35,7 @@ To build the full 5-pump mixer, you will need:
 * **20x** 6mm M3 screws
 
 **Plumbing**
-* **Silicone Tubing:** 3mm ID x 5mm OD (8ft+ recommended) (larger and smaller sizes can fit, up to 8mm outer diameter. but i found 3mm inner diamter to be the sweet spot between flow and accuracy)
+* **Silicone Tubing:** 3mm ID x 5mm OD (8ft+ recommended) (larger and smaller sizes can fit, up to 8mm outer diameter. but i found 3mm inner diameter to be the sweet spot between flow and accuracy)
 * **5x** Mio "Water Enhancer" caps (or generic store brand equivalents. I used the Kroger/Smiths store brand in my original model for cost reasons). these bottle caps use squeeze valves that we will
   "harvest" by cutting away the extra plastic.
   
