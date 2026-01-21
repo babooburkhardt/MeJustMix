@@ -2,6 +2,7 @@ package com.example.mejustmix.services
 
 import com.example.mejustmix.data.PaintMix
 import com.example.mejustmix.ui.PumpConfig
+import com.example.mejustmix.utils.PulseCompensationCalculator
 import kotlin.math.ceil
 import kotlin.math.roundToInt
 
@@ -23,8 +24,9 @@ object GCodeGenerator {
     /**
      * Generates G-code for dispensing a paint mixture.
      * 
-     * @param usePulseMode If true, dispense in whole pulses only
+     * @param usePulseMode If true, dispense with velocity compensation based on pillow geometry
      * @param pulseMinimum Minimum pulses for any non-zero component (default 1)
+     * @param pulseProfile Compensation profile (required if usePulseMode is true)
      */
     fun generateMixingScript(
         mix: PaintMix,
@@ -33,11 +35,17 @@ object GCodeGenerator {
         pumps: List<PumpConfig>,
         flowRateMlPerSec: Float,
         usePulseMode: Boolean = false,
-        pulseMinimum: Int = 1
+        pulseMinimum: Int = 1,
+        pulseProfile: PulseCompensationCalculator.PulseProfile? = null
     ): List<String> {
-        return if (usePulseMode) {
+        return if (usePulseMode && pulseProfile != null) {
+            // Pulse mode with velocity compensation
+            generateCompensatedMixingScript(mix, totalVolumeMl, retractionSteps, pumps, flowRateMlPerSec, pulseProfile)
+        } else if (usePulseMode) {
+            // Fallback to simple pulse mode if no profile provided
             generatePulseMixingScript(mix, totalVolumeMl, retractionSteps, pumps, flowRateMlPerSec, pulseMinimum).commands
         } else {
+            // Standard mL-based dispensing
             generateStandardMixingScript(mix, totalVolumeMl, retractionSteps, pumps, flowRateMlPerSec)
         }
     }
@@ -83,9 +91,9 @@ object GCodeGenerator {
             val vol = ratio * totalVolumeMl
             if (vol > 0) {
                 val stepsPerMl = pump.calibration.toFloatOrNull() ?: 100f
-                val steps = (vol * stepsPerMl).toInt()
-                if (steps > 0) {
-                    dispenseLine.append("${pump.axis}$steps ")
+                val steps = vol * stepsPerMl
+                if (steps > 0.01f) {
+                    dispenseLine.append("${pump.axis}${String.format("%.2f", steps)} ")
                     activeAxes.add(pump.axis)
                     hasMovement = true
                 }
@@ -249,6 +257,109 @@ object GCodeGenerator {
             pulseCounts = wholePulses,
             scaleFactor = scaleFactor
         )
+    }
+
+    /**
+     * Compensated pulse-based dispensing - modulates speed to counteract pump pulsation.
+     * 
+     * Algorithm:
+     * 1. Calculate total steps needed for each pump
+     * 2. For each pump, generate segmented G-code based on the pillow profile:
+     *    - Entry taper zone: Higher speed (compensates for reduced flow)
+     *    - Full flow zone: Nominal speed
+     *    - Exit taper zone: Higher speed (compensates for reduced flow)
+     * 3. Merge consecutive segments where possible to reduce G-code size
+     */
+    private fun generateCompensatedMixingScript(
+        mix: PaintMix,
+        totalVolumeMl: Float,
+        retractionSteps: Float,
+        pumps: List<PumpConfig>,
+        flowRateMlPerSec: Float,
+        profile: PulseCompensationCalculator.PulseProfile
+    ): List<String> {
+        if (pumps.size < 5) {
+            throw IllegalArgumentException("Requires at least 5 pumps (CMYK+W), got ${pumps.size}")
+        }
+
+        val commands = mutableListOf<String>()
+        val activeAxes = mutableListOf<String>()
+
+        fun getPump(name: String, defaultIndex: Int): PumpConfig {
+            return pumps.find { it.name.equals(name, ignoreCase = true) }
+                ?: pumps.getOrElse(defaultIndex) { pumps[0] }
+        }
+
+        val pumpData = listOf(
+            "Cyan" to (getPump("Cyan", 0) to mix.cyan),
+            "Magenta" to (getPump("Magenta", 1) to mix.magenta),
+            "Yellow" to (getPump("Yellow", 2) to mix.yellow),
+            "Black" to (getPump("Black", 3) to mix.black),
+            "White" to (getPump("White", 4) to mix.white)
+        )
+
+        // Calculate steps for each pump
+        val pumpSteps = mutableMapOf<String, Float>()
+        for ((name, data) in pumpData) {
+            val (pump, ratio) = data
+            val volumeNeeded = ratio * totalVolumeMl
+            val stepsPerMl = pump.calibration.toFloatOrNull() ?: 100f
+            pumpSteps[name] = volumeNeeded * stepsPerMl
+        }
+
+        // Reset positions
+        val allAxes = pumps.map { it.axis }.take(5).joinToString(" ") { "${it}0" }
+        commands.add("G92 $allAxes")
+        commands.add("G91")
+
+        // For simplicity, we'll process pumps one at a time with compensated segments
+        // This is because different pumps may have different total steps
+        for ((name, data) in pumpData) {
+            val (pump, _) = data
+            val totalSteps = pumpSteps[name] ?: 0f
+
+            if (totalSteps > 0.01f) {
+                activeAxes.add(pump.axis)
+
+                // Calculate base feed rate for this pump
+                val stepsPerMl = pump.calibration.toFloatOrNull() ?: 100f
+                val baseFeedRate = (flowRateMlPerSec * stepsPerMl * 60).toInt().coerceAtMost(MAX_SAFE_FEED_RATE)
+
+                // Generate compensated segments
+                val segments = PulseCompensationCalculator.generateCompensatedSegments(
+                    totalSteps = totalSteps,
+                    stepsPerPillow = pump.stepsPerPulse,
+                    baseFeedRate = baseFeedRate,
+                    profile = profile
+                )
+
+                // Merge consecutive segments with same feed rate
+                val mergedSegments = PulseCompensationCalculator.mergeConsecutiveSegments(segments)
+
+                // Generate G-code for each segment
+                for (segment in mergedSegments) {
+                    if (segment.steps > 0.01f) {
+                        val feedClamped = segment.feedRate.coerceAtMost(MAX_SAFE_FEED_RATE)
+                        commands.add("G1 ${pump.axis}${String.format("%.2f", segment.steps)} F$feedClamped")
+                    }
+                }
+            }
+        }
+
+        // Retraction
+        if (retractionSteps > 0 && activeAxes.isNotEmpty()) {
+            val avgCal = pumps.map { it.calibration.toFloatOrNull() ?: 100f }.average().toFloat()
+            val retractFeed = (flowRateMlPerSec * avgCal * 60).toInt().coerceAtMost(MAX_SAFE_FEED_RATE)
+            val retractCmd = StringBuilder("G1 ")
+            for (axis in activeAxes.distinct()) {
+                retractCmd.append("${axis}-${retractionSteps.toInt()} ")
+            }
+            retractCmd.append("F$retractFeed")
+            commands.add(retractCmd.toString().trim())
+        }
+
+        commands.add("G90")
+        return commands
     }
 
     /**

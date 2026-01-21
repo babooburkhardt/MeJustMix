@@ -75,6 +75,11 @@ data class SettingsUiState(
     val usePulseMode: Boolean = false,
     val pulseMinimum: Int = 1,              // Minimum pulses for any non-zero component
     
+    // Pulse compensation geometry (used when pulse mode is enabled)
+    val pillowLengthMm: Float = 40f,        // Total pillow length
+    val tubeInnerDiameterMm: Float = 3f,    // Tube bore (for volume calculations)
+    val fullDiameterSectionMm: Float = 32f, // Length at full tube expansion
+    
     // Spectral Sensor State
     val spectralSensorEnabled: Boolean = false,
     val spectralConnectionStatus: String = "Disconnected",
@@ -708,4 +713,34 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
         _uiState.update { it.copy(connectionMode = mode) }
         saveSettings()
     }
+    
+    // --- Pulse Compensation Geometry Settings ---
+    
+    /**
+     * Update the pillow length geometry (mm).
+     */
+    fun setPillowLengthMm(length: Float) {
+        _uiState.update { it.copy(pillowLengthMm = length.coerceIn(10f, 100f)) }
+        saveSettings()
+    }
+    
+    /**
+     * Update the tube inner diameter (mm).
+     */
+    fun setTubeInnerDiameterMm(diameter: Float) {
+        _uiState.update { it.copy(tubeInnerDiameterMm = diameter.coerceIn(1f, 10f)) }
+        saveSettings()
+    }
+    
+    /**
+     * Update the full diameter section length (mm).
+     */
+    fun setFullDiameterSectionMm(length: Float) {
+        val currentState = _uiState.value
+        // Ensure full section <= pillow length
+        val clamped = length.coerceIn(5f, currentState.pillowLengthMm - 1f)
+        _uiState.update { it.copy(fullDiameterSectionMm = clamped) }
+        saveSettings()
+    }
 }
+

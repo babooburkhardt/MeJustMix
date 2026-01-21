@@ -123,21 +123,33 @@ class PrinterRepository(private val context: Context) {
         
         _isSending.value = true
         return try {
+            // Generate G-code
             val gcode: List<String>
             val actualVolume: Float
             
             if (settings.usePulseMode) {
-                val pulseResult = GCodeGenerator.generatePulseMixingScript(
+                // Calculate pulse compensation profile from geometry settings
+                val profile = com.example.mejustmix.utils.PulseCompensationCalculator.calculateProfile(
+                    pillowLengthMm = settings.pillowLengthMm,
+                    fullDiameterSectionMm = settings.fullDiameterSectionMm,
+                    tubeInnerDiameterMm = settings.tubeInnerDiameterMm
+                )
+                
+                gcode = GCodeGenerator.generateMixingScript(
                     mix = mix,
                     totalVolumeMl = volume,
                     retractionSteps = settings.retractionSteps.toFloatOrNull() ?: 15f,
                     pumps = settings.pumps,
                     flowRateMlPerSec = settings.flowRate.toFloatOrNull() ?: 2.0f,
-                    pulseMinimum = settings.pulseMinimum
+                    usePulseMode = true,
+                    pulseMinimum = settings.pulseMinimum,
+                    pulseProfile = profile
                 )
-                gcode = pulseResult.commands
-                actualVolume = pulseResult.actualVolumeMl
-                addToHistory(">> PULSE MODE: Scaled ${pulseResult.scaleFactor}x, Actual: ${String.format("%.2f", actualVolume)}ml")
+                
+                // For pulse mode, we need to calculate actual volume from the profile
+                // This is approximate since we're using compensated segments
+                actualVolume = volume
+                addToHistory(">> PULSE MODE (Compensated): Taper ${(profile.taperFraction * 100).toInt()}%, Speed Boost ${String.format("%.1f", profile.taperSpeedMultiplier)}x")
             } else {
                 gcode = GCodeGenerator.generateMixingScript(
                     mix = mix,

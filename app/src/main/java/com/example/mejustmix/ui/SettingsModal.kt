@@ -770,6 +770,92 @@ fun SettingsModal(
                                     color = MaterialTheme.colorScheme.primary
                                 )
                             }
+                            
+                            // --- Pulse Compensation Geometry ---
+                            if (uiState.usePulseMode) {
+                                HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
+                                
+                                Text(
+                                    "⚡ Pump Geometry (for velocity compensation)",
+                                    style = MaterialTheme.typography.titleSmall,
+                                    fontWeight = FontWeight.Bold
+                                )
+                                Text(
+                                    "Motor speed is automatically modulated based on pillow geometry for smoother flow.",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = Color.Gray
+                                )
+                                Card(
+                                    colors = CardDefaults.cardColors(
+                                        containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+                                    )
+                                ) {
+                                    Column(
+                                        modifier = Modifier.padding(12.dp),
+                                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                                    ) {
+                                        Text("📐 Pump Geometry", fontWeight = FontWeight.SemiBold)
+                                        
+                                        Row(
+                                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                        ) {
+                                            OutlinedTextField(
+                                                value = String.format("%.1f", uiState.pillowLengthMm),
+                                                onValueChange = { 
+                                                    it.toFloatOrNull()?.let { v -> settingsViewModel.setPillowLengthMm(v) }
+                                                },
+                                                label = { Text("Pillow (mm)") },
+                                                modifier = Modifier.weight(1f),
+                                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                                                singleLine = true
+                                            )
+                                            OutlinedTextField(
+                                                value = String.format("%.1f", uiState.tubeInnerDiameterMm),
+                                                onValueChange = { 
+                                                    it.toFloatOrNull()?.let { v -> settingsViewModel.setTubeInnerDiameterMm(v) }
+                                                },
+                                                label = { Text("Tube ID (mm)") },
+                                                modifier = Modifier.weight(1f),
+                                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                                                singleLine = true
+                                            )
+                                        }
+                                        
+                                        OutlinedTextField(
+                                            value = String.format("%.1f", uiState.fullDiameterSectionMm),
+                                            onValueChange = { 
+                                                it.toFloatOrNull()?.let { v -> settingsViewModel.setFullDiameterSectionMm(v) }
+                                            },
+                                            label = { Text("Full Diameter Section (mm)") },
+                                            modifier = Modifier.fillMaxWidth(),
+                                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                                            singleLine = true
+                                        )
+                                        
+                                        // Calculated profile summary
+                                        val taperLengthMm = (uiState.pillowLengthMm - uiState.fullDiameterSectionMm) / 2f
+                                        val taperPercent = ((taperLengthMm / uiState.pillowLengthMm) * 100).toInt()
+                                        
+                                        Card(
+                                            colors = CardDefaults.cardColors(
+                                                containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.3f)
+                                            )
+                                        ) {
+                                            Column(modifier = Modifier.padding(8.dp)) {
+                                                Text("📊 Calculated Profile:", style = MaterialTheme.typography.labelMedium)
+                                                Text(
+                                                    "Taper Zone: $taperPercent% (${String.format("%.1f", taperLengthMm)}mm each side)",
+                                                    style = MaterialTheme.typography.bodySmall
+                                                )
+                                                Text(
+                                                    "Speed Boost: 2.0x in taper zones",
+                                                    style = MaterialTheme.typography.bodySmall
+                                                )
+                                            }
+                                        }
+                                    }
+                                }
+                            }
                         }
                     }
                 }

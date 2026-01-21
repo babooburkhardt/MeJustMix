@@ -42,22 +42,28 @@ To build the full 5-pump mixer, you will need:
 ---
 
 ## ⚙️ Firmware Installation (MKS TinyBee)
-We use **FluidNC** for motion control, allowing the Android app to talk to the board over Wi-Fi.
+We use **FluidNC** for motion control. The app supports **two connection modes**:
+- **Bluetooth (BLE)** – Direct wireless connection, auto-discovery, no network setup required
+- **WiFi** – Network-based connection, access to FluidNC web interface
 
 ### 1. Flash the Board
 1.  Connect your MKS TinyBee to your PC via USB (Make sure to set the jumper near the USB port to USB power during setup. This lets you configure without a dedicated power supply).
 2.  Open **[installer.fluidnc.com](https://installer.fluidnc.com)** in Chrome or Edge.
 3.  Click **Connect** and select your board's serial port.
 4.  Select the latest firmware version.
-5.  **Important:** Choose the **"Wifi"** variant.
+5.  **Choose your variant:**
+    - **For Bluetooth:** Select the **"Bluetooth"** or **"BT"** variant
+    - **For WiFi:** Select the **"Wifi"** variant
+    - ⚠️ **Note:** The board cannot run both simultaneously. Choose based on your preferred connection method.
 6.  Click **Install**.
 
 ### 2. Configure the Machine
 1.  Download the [`config.yaml`](config.yaml) file.
 2.  In the Web Installer (or FluidNC Web UI), go to the **Config** tab.
 3.  Upload the `.yaml` file.
-4.  locate (and write down) the IP address (should be on the wifi page)
-5.  Restart the board.
+4.  **If using WiFi:** Locate and write down the IP address (should be on the wifi page).
+5.  **If using Bluetooth:** The device will advertise as "FluidNC" by default.
+6.  Restart the board.
 
 *Note: If your pumps run backwards, flip the motor plug or change the direction pin in the config.*
 
@@ -65,11 +71,53 @@ We use **FluidNC** for motion control, allowing the Android app to talk to the b
 
 ### 3.📱 The App
 This repository contains the Android application source code.
+
+#### Installation
 1.  Build the APK from source, or download from releases.
 2.  Install on your Android device.
-3.  Connect to the machine's IP over Wi-Fi.
-4.  Run a few calibrations. (tip, start with water to test. then move to paint after you confirmed it pumps. calibrate everythingg with paint, ***not water***, they flow differently)
-5.  Start mixing.
+
+#### First Launch - Connection Setup
+On first launch, the app will ask you to choose your connection method:
+
+**Option 1: Bluetooth (Recommended)**
+1. Select **"Bluetooth"** when prompted
+2. The app will explain why location permission is needed (Android requirement for BLE scanning)
+3. Tap **"Grant Permission"** to allow location access
+   - *Note: The app does NOT track your location. This permission is only used to scan for Bluetooth devices.*
+4. The app will automatically scan for nearby FluidNC devices
+5. When your machine is found, tap to connect
+6. That's it! No IP addresses, no network configuration needed.
+
+**Option 2: WiFi**
+1. Select **"WiFi"** when prompted
+2. Enter your FluidNC's IP address (from step 2.4 above)
+3. The app will connect over your local network
+4. You can access the FluidNC web interface by tapping "Open FluidNC Web Control" in Settings
+
+#### Using the App
+1. **Calibration:** Run a few calibrations before mixing paint
+   - *Tip: Start with water to test, then move to paint after confirming it pumps*
+   - ⚠️ **Important:** Calibrate everything with paint, ***not water*** – they flow differently
+2. **Mixing:** Select colors, adjust amounts, and dispense
+3. **Multi-Machine Support (BLE only):** If you have multiple machines (e.g., one for acrylics, one for airbrush), you can add and switch between them in Settings
+
+#### Switching Connection Modes
+You can change between Bluetooth and WiFi anytime:
+1. Open **Settings** → **Connection Settings**
+2. Toggle between **[Bluetooth]** and **[WiFi]**
+3. Configure the new connection method
+4. The app will remember your choice
+
+**Why Choose Bluetooth?**
+- ✅ Auto-discovery – no IP addresses to remember
+- ✅ Direct connection – works without WiFi network
+- ✅ Multi-machine support – easily switch between multiple mixers
+- ✅ Simpler setup – just turn on and connect
+
+**Why Choose WiFi?**
+- ✅ Access to FluidNC web interface
+- ✅ No location permission required
+- ✅ Longer range (depends on your network)
 
 ---
 

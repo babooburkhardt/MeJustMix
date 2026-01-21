@@ -78,11 +78,30 @@ object KubelkaMunkColorMixing {
         var bestError = calculateLabError(bestMix, targetLab, pigmentDatabase)
         
         var stepSize = 0.1f
-        val minStep = 0.002f
+        val minStep = 0.0005f // High precision
         var noImprovementCount = 0
         
-        repeat(150) {
+        // 1. "Zero-Tolerance" White Check (Multi-Point Initialization)
+        // actively scans for the "sweet spot" of white pigment before starting the main loop.
+        // We test 0.5%, 1%, 2.5%, and 5% white to see if any of them beat the "pure" guess.
+        if (bestMix.white < 0.005f) {
+            val whiteCandidates = listOf(0.005f, 0.01f, 0.025f, 0.05f)
+            for (w in whiteCandidates) {
+                val testMix = normalize(bestMix.copy(white = w))
+                val testError = calculateLabError(testMix, targetLab, pigmentDatabase)
+                if (testError < bestError) {
+                    bestMix = testMix
+                    bestError = testError
+                }
+            }
+        }
+        
+        // 2. Main Optimization Loop with Micro-Stepping
+        repeat(300) { 
             var improved = false
+            
+            // White gets a "Micro-Step" (1/20th) for extreme sensitivity
+            val microStep = stepSize * 0.05f
             
             val adjustments = listOf(
                 { m: PaintMix, d: Float -> m.copy(cyan = (m.cyan + d).coerceIn(0f, 1f)) },
@@ -92,20 +111,43 @@ object KubelkaMunkColorMixing {
                 { m: PaintMix, d: Float -> m.copy(white = (m.white + d).coerceIn(0f, 1f)) }
             )
             
-            for (adjust in adjustments) {
-                // Try increase
+            for ((index, adjust) in adjustments.withIndex()) {
+                val isWhite = index == 4
+                
+                // Standard Step
                 val testPos = normalize(adjust(bestMix, stepSize))
                 val errorPos = calculateLabError(testPos, targetLab, pigmentDatabase)
-                if (errorPos < bestError - 0.01f) {
+                
+                // MICRO-STEPPING (White Only)
+                if (isWhite && errorPos >= bestError) {
+                    val testMicro = normalize(adjust(bestMix, microStep))
+                    val errorMicro = calculateLabError(testMicro, targetLab, pigmentDatabase)
+                    if (errorMicro < bestError - 0.0001f) { // Lower threshold
+                        bestMix = testMicro
+                        bestError = errorMicro
+                        improved = true
+                        continue 
+                    }
+                } else if (errorPos < bestError - 0.0001f) {
                     bestMix = testPos
                     bestError = errorPos
                     improved = true
                 }
                 
-                // Try decrease
+                // Standard Negative Step
                 val testNeg = normalize(adjust(bestMix, -stepSize))
                 val errorNeg = calculateLabError(testNeg, targetLab, pigmentDatabase)
-                if (errorNeg < bestError - 0.01f) {
+                
+                if (isWhite && errorNeg >= bestError) {
+                    val testMicroNeg = normalize(adjust(bestMix, -microStep))
+                    val errorMicroNeg = calculateLabError(testMicroNeg, targetLab, pigmentDatabase)
+                    if (errorMicroNeg < bestError - 0.0001f) {
+                        bestMix = testMicroNeg
+                        bestError = errorMicroNeg
+                        improved = true
+                        continue
+                    }
+                } else if (errorNeg < bestError - 0.0001f) {
                     bestMix = testNeg
                     bestError = errorNeg
                     improved = true
@@ -115,12 +157,36 @@ object KubelkaMunkColorMixing {
             if (!improved) {
                 noImprovementCount++
                 if (noImprovementCount >= 3) {
-                    stepSize *= 0.6f
+                    stepSize *= 0.5f // Gentler decay
                     noImprovementCount = 0
                     if (stepSize < minStep) return@repeat
                 }
             } else {
                 noImprovementCount = 0
+            }
+        }
+        
+        // 3. Last-Mile "White Polish"
+        // Dedicated pass to wiggle White by tiny amounts (0.0005) to shave off the last bit of Delta E
+        // This ensures we never say "legit unnecessary" unless it TRULY is.
+        var polishStep = 0.002f
+        repeat(50) {
+            val wUp = normalize(bestMix.copy(white = (bestMix.white + polishStep).coerceIn(0f, 1f)))
+            val errUp = calculateLabError(wUp, targetLab, pigmentDatabase)
+            
+            if (errUp < bestError) {
+                bestMix = wUp
+                bestError = errUp
+            } else {
+                val wDown = normalize(bestMix.copy(white = (bestMix.white - polishStep).coerceIn(0f, 1f)))
+                val errDown = calculateLabError(wDown, targetLab, pigmentDatabase)
+                if (errDown < bestError) {
+                    bestMix = wDown
+                    bestError = errDown
+                } else {
+                    polishStep *= 0.5f
+                    if (polishStep < 0.0001f) return@repeat
+                }
             }
         }
         
@@ -140,16 +206,20 @@ object KubelkaMunkColorMixing {
         val minRGB = min(r, min(g, b))
         val lightness = (maxRGB + minRGB) / 2f
         
-        val darkness = 1f - maxRGB
+        val darkness = 1f - maxRGB // Estimation of black content
         val k = if (darkness > 0.1f && lightness < 0.4f) {
             darkness * 0.5f
         } else {
             0f
         }
         
+        // 3. Improved White Guess Logic
+        // Old: lightness > 0.7f (Too strict, missed mid-tones)
+        // New: lightness > 0.4f OR significantly desaturated colors (high minRGB)
+        // "Tad light" colors often fall in the 0.5-0.7 range.
         val w = when {
-            lightness > 0.7f -> (lightness - 0.5f) * 0.8f
-            minRGB > 0.3f -> minRGB * 0.3f
+            lightness > 0.4f -> (lightness - 0.3f) * 0.8f // Aggressively suggest white for anything not dark
+            minRGB > 0.2f -> minRGB * 0.5f // If the darkest channel is lit, we probably need white
             else -> 0f
         }
         
