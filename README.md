@@ -1,4 +1,4 @@
-# MeJustMix
+_# MeJustMix
 
 **MeJustMix** is the Android app controller for a DIY paint mixing machine. It handles the brains of the operation so you can mix paints (or whatever else you're pumping) without the headache.
 
@@ -7,14 +7,17 @@
 ---
 
 ## 🛠️ The Hardware
-For the STLs, full assembly instructions, and motor mounts, head over to the project page:
+For the STLs, and motor mounts, head over to the project page:
 👉 **[MeJustMix on Printables](https://www.printables.com/model/1563458-mejustmix)**
 
-### Bill of Materials (BOM)     ..if i forgot something i apoligize.. still a WIP
+## Assembly guide is currently AI generated. and only handles all the electrical side. as it cannot understand STLs. im working on it myself, so treat the current guide as something to fill the gap while i find spare time to work on it
+
+### Bill of Materials (BOM)     ..if i forgot something i apologize.. still a WIP
 To build the full 5-pump mixer, you will need:
 
 **Electronics & Motors**
 * **1x** MKS TinyBee (Motherboard)
+* **5x** TMC2209 stepper driver (or any other stepper driver, its just these are silent by default with our setup, so no stepper noise everytime you make paint)
 * **1x** 24v 5a power supply
 * **5x** Nema 17 Stepper Motors (Standard size, **do not** use pancake motors)
 * **5x** Compact Planetary Gear for Nema17 (4:1 ratio) - *See Credits below or description of MeJustMix on printables* 
@@ -35,9 +38,16 @@ To build the full 5-pump mixer, you will need:
 * **20x** 6mm M3 screws
 
 **Plumbing**
-* **Silicone Tubing:** 3mm ID x 5mm OD (8ft+ recommended) (larger and smaller sizes can fit, up to 8mm outer diameter. but i found 3mm inner diamter to be the sweet spot between flow and accuracy)
+* **Silicone Tubing:** 3mm ID x 5mm OD (8ft+ recommended) Larger and smaller sizes can fit, up to 8mm outer diameter. But I found 3mm inner diameter to be the sweet spot between flow and accuracy. Inner diameter MUST be 2mm smaller than the outer diamter, or you can custom design your own insert to adjust the spacing. I left it modular for this reason
 * **5x** Mio "Water Enhancer" caps (or generic store brand equivalents. I used the Kroger/Smiths store brand in my original model for cost reasons). these bottle caps use squeeze valves that we will
   "harvest" by cutting away the extra plastic.
+  
+**Paint - Liquitex Acrylic Basic Fluid** (if you dont want to fight the quick calibrator, stick to these exact paints, others will be supported later)
+* **Cadmium Yellow Medium Hue**
+* **Phthanlocyanine Blue**
+* **Mars Black** (or carbon black, but mars black is cheaper an does the same for our use)
+* **Quinacridone Magenta**
+* **Titanium White**
 
 ---
 
@@ -49,12 +59,12 @@ We use **FluidNC** for motion control. The app supports **two connection modes**
 ### 1. Flash the Board
 1.  Connect your MKS TinyBee to your PC via USB (Make sure to set the jumper near the USB port to USB power during setup. This lets you configure without a dedicated power supply).
 2.  Open **[installer.fluidnc.com](https://installer.fluidnc.com)** in Chrome or Edge.
-3.  Click **Connect** and select your board's serial port.
+3.  Click **Connect** and select your board's serial port. (if unsure, try seeing what changes if the board is unplugged vs plugged in. the one that changes likely is your board)
 4.  Select the latest firmware version.
 5.  **Choose your variant:**
     - **For Bluetooth:** Select the **"Bluetooth"** or **"BT"** variant
     - **For WiFi:** Select the **"Wifi"** variant
-    - ⚠️ **Note:** The board cannot run both simultaneously. Choose based on your preferred connection method.
+    - ⚠️ **Note:** The board cannot run both simultaneously. BLE will auto connect to app, but requires location permissions to find it. WI-FI requires no permission, but adds an extra setup step.
 6.  Click **Install**.
 
 ### 2. Configure the Machine
@@ -62,7 +72,7 @@ We use **FluidNC** for motion control. The app supports **two connection modes**
 2.  In the Web Installer (or FluidNC Web UI), go to the **Config** tab.
 3.  Upload the `.yaml` file.
 4.  **If using WiFi:** Locate and write down the IP address (should be on the wifi page).
-5.  **If using Bluetooth:** The device will advertise as "FluidNC" by default.
+5.  **If using Bluetooth:** The device will advertise as "FluidNC" by default after a reboot.
 6.  Restart the board.
 
 *Note: If your pumps run backwards, flip the motor plug or change the direction pin in the config.*
@@ -96,8 +106,8 @@ On first launch, the app will ask you to choose your connection method:
 
 #### Using the App
 1. **Calibration:** Run a few calibrations before mixing paint
-   - *Tip: Start with water to test, then move to paint after confirming it pumps*
-   - ⚠️ **Important:** Calibrate everything with paint, ***not water*** – they flow differently
+   - *Tip: Start with water to test pumps, then move to paint after confirming it works and doesnt leak*
+   - ⚠️ **Important:** Calibrate everything with paint, ***not water*** – they flow differently. 
 2. **Mixing:** Select colors, adjust amounts, and dispense
 3. **Multi-Machine Support (BLE only):** If you have multiple machines (e.g., one for acrylics, one for airbrush), you can add and switch between them in Settings
 
@@ -119,6 +129,7 @@ You can change between Bluetooth and WiFi anytime:
 - ✅ No location permission required
 - ✅ Longer range (depends on your network)
 
+
 ---
 
 ## 🙌 Credits & Acknowledgements
@@ -136,3 +147,4 @@ This work is licensed under the **Creative Commons Attribution-NonCommercial 4.0
 
 * **Attribution:** Give credit where it's due.
 * **Non-Commercial:** You may not use this work for commercial purposes without my explicit permission.
+_
