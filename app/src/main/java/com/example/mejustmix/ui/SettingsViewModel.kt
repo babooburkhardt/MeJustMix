@@ -100,6 +100,9 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
     
     // Unified BLE Scanner
     private val bleScanner = UnifiedBLEScanner(application)
+    
+    // Repository for printer communication
+    private val printerRepository = com.example.mejustmix.data.PrinterRepository.getInstance(application)
 
     private val prefs = application.getSharedPreferences("mejustmix_settings", Context.MODE_PRIVATE)
     private val gson = Gson()
@@ -480,21 +483,44 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
         
         // Calculate steps to move to reach home boundary
         val currentOffset = pump.pulseHomeOffset
-        val stepsToMove = (currentOffset % stepsPerPulse).toInt()
+        val stepsToMove = (pump.stepsPerPulse - (currentOffset % pump.stepsPerPulse)) % pump.stepsPerPulse
         
-        // TODO: Send G-code command to prime
-        // Example: sendGCodeToController("G0 ${pump.axis}$stepsToMove")
-        
-        // After successful prime, the pump is now at home (offset = 0)
-        _uiState.update { state ->
-            val updatedPumps = state.pumps.toMutableList()
-            updatedPumps[pumpIndex] = pump.copy(
-                pulseHomeOffset = 0f  // Reset to 0 after successful prime to home
-            )
-            state.copy(pumps = updatedPumps)
+        // Don't move if already at home (or very close)
+        if (stepsToMove < 1f) {
+            showToast("${pump.name} already at home")
+            return
         }
-        saveSettings()
-        showToast("${pump.name} primed to home position")
+
+        viewModelScope.launch {
+            try {
+                // Send G-code command to prime
+                val flowRate = _uiState.value.flowRate.toFloatOrNull() ?: 2.0f
+                val stepsPerMl = pump.calibration.toFloatOrNull() ?: 100f
+                val volumeMl = stepsToMove / stepsPerMl
+                
+                val primeGcode = com.example.mejustmix.services.GCodeGenerator.generatePrimeOnlyScript(
+                     axis = pump.axis,
+                     volumeMl = volumeMl,
+                     stepsPerMl = stepsPerMl,
+                     flowRateMlPerSec = flowRate
+                )
+                
+                printerRepository.sendRaw(primeGcode)
+                
+                // After successful prime, the pump is now at home (offset = 0)
+                _uiState.update { state ->
+                    val updatedPumps = state.pumps.toMutableList()
+                    updatedPumps[pumpIndex] = pump.copy(
+                        pulseHomeOffset = 0f  // Reset to 0 after successful prime to home
+                    )
+                    state.copy(pumps = updatedPumps)
+                }
+                saveSettings()
+                showToast("${pump.name} primed to home position")
+            } catch (e: Exception) {
+                showToast("Error priming: ${e.message}")
+            }
+        }
     }
     
     /**

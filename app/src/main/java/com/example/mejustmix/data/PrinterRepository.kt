@@ -17,7 +17,21 @@ import kotlinx.coroutines.delay
  * Supports both BLE and WiFi connection modes.
  * Manages connection, GCode generation, and sending.
  */
-class PrinterRepository(private val context: Context) {
+class PrinterRepository private constructor(context: Context) {
+    
+    // Store application context to avoid memory leaks
+    private val appContext: Context = context.applicationContext
+
+    companion object {
+        @Volatile
+        private var instance: PrinterRepository? = null
+
+        fun getInstance(context: Context): PrinterRepository {
+            return instance ?: synchronized(this) {
+                instance ?: PrinterRepository(context).also { instance = it }
+            }
+        }
+    }
 
     // WiFi connection (HTTP)
     private var fluidNCService: FluidNCService? = null
@@ -55,7 +69,7 @@ class PrinterRepository(private val context: Context) {
      * Connect via BLE.
      */
     private fun connectBLE(machine: MachineProfile) {
-        bleManager = FluidNCBLEManager(context)
+        bleManager = FluidNCBLEManager(appContext)
         
         // Monitor BLE connection state and convert to FluidNCStatus
         // TODO: Collect bleManager.connectionState and map to FluidNCStatus
@@ -74,7 +88,7 @@ class PrinterRepository(private val context: Context) {
         if (machine.ipAddress.isNullOrBlank()) return
         
         fluidNCService = FluidNCService(
-            context = context,
+            context = appContext,
             onStatusChange = { status -> _connectionStatus.value = status },
             onGCodeSent = { gcode -> _gcodeHistory.update { it + ">> $gcode" } }
         )
@@ -87,7 +101,7 @@ class PrinterRepository(private val context: Context) {
     fun connect(ipAddress: String) {
         disconnect()
         fluidNCService = FluidNCService(
-            context = context,
+            context = appContext,
             onStatusChange = { status -> _connectionStatus.value = status },
             onGCodeSent = { gcode -> _gcodeHistory.update { it + ">> $gcode" } }
         )

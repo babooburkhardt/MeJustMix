@@ -129,7 +129,7 @@ class MixViewModel @JvmOverloads constructor(
     private val photoLibraryRepository = PhotoLibraryRepository(getApplication())
 
     // --- REPOSITORY ---
-    private val printerRepository = com.example.mejustmix.data.PrinterRepository(application)
+    private val printerRepository = com.example.mejustmix.data.PrinterRepository.getInstance(application)
     
     init {
         // Sync retraction from settings
@@ -443,9 +443,21 @@ class MixViewModel @JvmOverloads constructor(
         val currentList = _mixHistory.value.toMutableList()
         currentList.add(0, newItem) 
         if (currentList.size > MAX_HISTORY_SIZE) {
-            currentList.removeLast()
+            currentList.removeAt(currentList.lastIndex)  // API-safe alternative to removeLast()
         }
         _mixHistory.value = currentList
+    }
+
+    fun undoLastMix() {
+        val currentList = _mixHistory.value
+        if (currentList.isNotEmpty()) {
+            val lastItem = currentList.last()
+            _mixHistory.value = currentList.toMutableList().apply { 
+                removeAt(lastIndex)  // API-safe alternative to removeLast()
+            }
+            
+            // Restore paint volumes = currentList
+        }
     }
 
     fun restoreFromHistory(item: HistoryItem) {
