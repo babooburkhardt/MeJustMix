@@ -45,7 +45,7 @@ To build the full 5-pump mixer, you will need:
 * **Mars Black** (or carbon black, but mars black is cheaper an does the same for our use)
 * **Quinacridone Magenta**
 * **Titanium White**
-* 
+
 ---
 
 ## ⚙️ Firmware Installation (MKS TinyBee)
