@@ -143,10 +143,15 @@ class PrinterRepository private constructor(context: Context) {
             
             if (settings.usePulseMode) {
                 // Calculate pulse compensation profile from geometry settings
+                val flowRateMlPerSec = settings.flowRate.toFloatOrNull() ?: 2.0f
+                val avgCalibration = settings.pumps.map { it.calibration.toFloatOrNull() ?: 100f }.average().toFloat()
+                val baseFeedRate = (flowRateMlPerSec * avgCalibration * 60).toInt() // Convert to mm/min
+                
                 val profile = com.example.mejustmix.utils.PulseCompensationCalculator.calculateProfile(
                     pillowLengthMm = settings.pillowLengthMm,
                     fullDiameterSectionMm = settings.fullDiameterSectionMm,
-                    tubeInnerDiameterMm = settings.tubeInnerDiameterMm
+                    tubeInnerDiameterMm = settings.tubeInnerDiameterMm,
+                    baseFeedRate = baseFeedRate  // Use actual flow rate for accurate acceleration calculation
                 )
                 
                 gcode = GCodeGenerator.generateMixingScript(
@@ -154,12 +159,14 @@ class PrinterRepository private constructor(context: Context) {
                     totalVolumeMl = volume,
                     retractionSteps = settings.retractionSteps.toFloatOrNull() ?: 15f,
                     pumps = settings.pumps,
-                    flowRateMlPerSec = settings.flowRate.toFloatOrNull() ?: 2.0f,
+                    flowRateMlPerSec = flowRateMlPerSec,
                     usePulseMode = true,
                     pulseMinimum = settings.pulseMinimum,
                     pulseProfile = profile,
                     useDynamicAcceleration = settings.useDynamicAcceleration,
-                    taperAcceleration = settings.taperAcceleration
+                    taperAcceleration = settings.taperAcceleration,
+                    nominalAcceleration = settings.nominalAcceleration,
+                    maxFeedRate = settings.maxFeedRate
                 )
                 
                 // For pulse mode, we need to calculate actual volume from the profile

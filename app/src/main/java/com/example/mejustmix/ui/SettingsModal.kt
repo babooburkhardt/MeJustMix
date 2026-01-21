@@ -897,7 +897,55 @@ fun SettingsModal(
                                                     )
                                                 }
                                             )
+                                            
+                                            OutlinedTextField(
+                                                value = String.format("%.0f", uiState.nominalAcceleration),
+                                                onValueChange = { 
+                                                    it.toFloatOrNull()?.let { v -> settingsViewModel.setNominalAcceleration(v) }
+                                                },
+                                                label = { Text("Nominal Accel (mm/s²)") },
+                                                modifier = Modifier.fillMaxWidth(),
+                                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                                                singleLine = true,
+                                                supportingText = {
+                                                    Text(
+                                                        "Range: 100-3000 mm/s². Full-flow zone acceleration.",
+                                                        style = MaterialTheme.typography.bodySmall
+                                                    )
+                                                }
+                                            )
                                         }
+                                        
+                                        // --- FluidNC Speed Limits ---
+                                        HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
+                                        
+                                        Text(
+                                            "⚙️ FluidNC Speed Limits",
+                                            fontWeight = FontWeight.SemiBold,
+                                            style = MaterialTheme.typography.bodyMedium
+                                        )
+                                        Text(
+                                            "Configure max speed for \"you can go faster\" mode",
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = Color.Gray
+                                        )
+                                        
+                                        OutlinedTextField(
+                                            value = String.format("%.0f", uiState.maxFeedRate),
+                                            onValueChange = { 
+                                                it.toFloatOrNull()?.let { v -> settingsViewModel.setMaxFeedRate(v) }
+                                            },
+                                            label = { Text("Max Feed Rate (mm/min)") },
+                                            modifier = Modifier.fillMaxWidth(),
+                                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                                            singleLine = true,
+                                            supportingText = {
+                                                Text(
+                                                    "Range: 1000-20000 mm/min. Sets FluidNC \$11X limit.",
+                                                    style = MaterialTheme.typography.bodySmall
+                                                )
+                                            }
+                                        )
                                     }
                                 }
                             }

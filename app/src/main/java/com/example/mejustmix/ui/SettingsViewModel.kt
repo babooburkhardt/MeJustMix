@@ -84,6 +84,10 @@ data class SettingsUiState(
     // Dynamic acceleration control
     val useDynamicAcceleration: Boolean = false,  // Enable FluidNC acceleration adjustment
     val taperAcceleration: Float = 500f,          // Acceleration for taper zones (mm/s²)
+    val nominalAcceleration: Float = 1000f,       // Nominal acceleration for full-flow zones (mm/s²)
+    
+    // FluidNC speed limits (for "you can go faster" configuration)
+    val maxFeedRate: Float = 5000f,               // Max feed rate per axis (mm/min) - $110-$115
     
     // Spectral Sensor State
     val spectralSensorEnabled: Boolean = false,
@@ -787,6 +791,22 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
      */
     fun setTaperAcceleration(value: Float) {
         _uiState.update { it.copy(taperAcceleration = value.coerceIn(50f, 2000f)) }
+        saveSettings()
+    }
+    
+    /**
+     * Update the nominal acceleration for full-flow zones (mm/s²).
+     */
+    fun setNominalAcceleration(value: Float) {
+        _uiState.update { it.copy(nominalAcceleration = value.coerceIn(100f, 3000f)) }
+        saveSettings()
+    }
+    
+    /**
+     * Update the max feed rate limit (mm/min).
+     */
+    fun setMaxFeedRate(value: Float) {
+        _uiState.update { it.copy(maxFeedRate = value.coerceIn(1000f, 20000f)) }
         saveSettings()
     }
 }

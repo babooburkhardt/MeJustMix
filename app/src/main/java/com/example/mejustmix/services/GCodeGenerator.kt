@@ -20,6 +20,33 @@ object GCodeGenerator {
 
     // LIMITATION FIX: Safe upper limit for stepper motors.
     private const val MAX_SAFE_FEED_RATE = 12000
+    
+    /**
+     * Generate FluidNC initialization commands to configure speed and acceleration limits.
+     * These commands set the $11X (max rate) and $12X (acceleration) values for each axis.
+     * 
+     * @param pumps List of pump configurations with axis indices
+     * @param maxFeedRate Maximum feed rate per axis (mm/min) - sets $110-$115
+     * @param nominalAcceleration Default acceleration per axis (mm/s²) - sets $120-$125
+     * @return List of FluidNC configuration commands
+     */
+    fun generateFluidNCInitCommands(
+        pumps: List<PumpConfig>,
+        maxFeedRate: Float = 5000f,
+        nominalAcceleration: Float = 1000f
+    ): List<String> {
+        val commands = mutableListOf<String>()
+        
+        // Set max rate and acceleration for each active pump axis
+        for (pump in pumps.take(5)) {  // Limit to 5 pumps (CMYKW)
+            // $11X = max rate (mm/min)
+            commands.add("$$11${pump.axisIndex}=${maxFeedRate.toInt()}")
+            // $12X = acceleration (mm/s²)
+            commands.add("$$12${pump.axisIndex}=${nominalAcceleration.toInt()}")
+        }
+        
+        return commands
+    }
 
     /**
      * Generates G-code for dispensing a paint mixture.
@@ -29,6 +56,8 @@ object GCodeGenerator {
      * @param pulseProfile Compensation profile (required if usePulseMode is true)
      * @param useDynamicAcceleration If true, adjust FluidNC acceleration for taper zones
      * @param taperAcceleration Custom acceleration for taper zones (mm/s²), or use profile's optimal value if null
+     * @param nominalAcceleration Acceleration for full-flow zones (mm/s²)
+     * @param maxFeedRate Maximum feed rate limit (mm/min)
      */
     fun generateMixingScript(
         mix: PaintMix,
@@ -40,11 +69,13 @@ object GCodeGenerator {
         pulseMinimum: Int = 1,
         pulseProfile: PulseCompensationCalculator.PulseProfile? = null,
         useDynamicAcceleration: Boolean = false,
-        taperAcceleration: Float? = null
+        taperAcceleration: Float? = null,
+        nominalAcceleration: Float = 1000f,
+        maxFeedRate: Float = 5000f
     ): List<String> {
         return if (usePulseMode && pulseProfile != null) {
             // Pulse mode with velocity compensation
-            generateCompensatedMixingScript(mix, totalVolumeMl, retractionSteps, pumps, flowRateMlPerSec, pulseProfile, useDynamicAcceleration, taperAcceleration)
+            generateCompensatedMixingScript(mix, totalVolumeMl, retractionSteps, pumps, flowRateMlPerSec, pulseProfile, useDynamicAcceleration, taperAcceleration, nominalAcceleration, maxFeedRate)
         } else if (usePulseMode) {
             // Fallback to simple pulse mode if no profile provided
             generatePulseMixingScript(mix, totalVolumeMl, retractionSteps, pumps, flowRateMlPerSec, pulseMinimum).commands
@@ -283,7 +314,9 @@ object GCodeGenerator {
         flowRateMlPerSec: Float,
         profile: PulseCompensationCalculator.PulseProfile,
         useDynamicAcceleration: Boolean = false,
-        taperAcceleration: Float? = null
+        taperAcceleration: Float? = null,
+        nominalAcceleration: Float = 1000f,
+        maxFeedRate: Float = 5000f
     ): List<String> {
         if (pumps.size < 5) {
             throw IllegalArgumentException("Requires at least 5 pumps (CMYK+W), got ${pumps.size}")
@@ -345,13 +378,13 @@ object GCodeGenerator {
 
                 // Determine acceleration values
                 val effectiveTaperAccel = taperAcceleration ?: profile.optimalTaperAcceleration
-                val nominalAccel = 1000f // FluidNC default (can be made configurable later)
 
                 // Generate G-code for each segment
                 var previousFeedRate = baseFeedRate
                 for (segment in mergedSegments) {
                     if (segment.steps > 0.01f) {
-                        val feedClamped = segment.feedRate.coerceAtMost(MAX_SAFE_FEED_RATE)
+                        // Clamp feed rate to user-configured max
+                        val feedClamped = segment.feedRate.coerceAtMost(maxFeedRate.toInt()).coerceAtMost(MAX_SAFE_FEED_RATE)
                         
                         // Inject acceleration command if dynamic acceleration is enabled
                         // and we're transitioning between taper and nominal zones
@@ -360,7 +393,7 @@ object GCodeGenerator {
                             val wasTaperZone = previousFeedRate > baseFeedRate
                             
                             if (isTaperZone != wasTaperZone) {
-                                val targetAccel = if (isTaperZone) effectiveTaperAccel else nominalAccel
+                                val targetAccel = if (isTaperZone) effectiveTaperAccel else nominalAcceleration
                                 // FluidNC command: $12X=value where X is axis index (0=X, 1=Y, 2=Z, 3=A, 4=B)
                                 commands.add("$$12${pump.axisIndex}=${targetAccel.toInt()}")
                             }
@@ -373,7 +406,7 @@ object GCodeGenerator {
                 
                 // Reset to nominal acceleration after pump finishes (if dynamic accel was used)
                 if (useDynamicAcceleration) {
-                    commands.add("$$12${pump.axisIndex}=${nominalAccel.toInt()}")
+                    commands.add("$$12${pump.axisIndex}=${nominalAcceleration.toInt()}")
                 }
             }
         }
