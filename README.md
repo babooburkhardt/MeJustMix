@@ -38,7 +38,14 @@ To build the full 5-pump mixer, you will need:
 * **Silicone Tubing:** 3mm ID x 5mm OD (8ft+ recommended) (larger and smaller sizes can fit, up to 8mm outer diameter. but i found 3mm inner diamter to be the sweet spot between flow and accuracy)
 * **5x** Mio "Water Enhancer" caps (or generic store brand equivalents. I used the Kroger/Smiths store brand in my original model for cost reasons). these bottle caps use squeeze valves that we will
   "harvest" by cutting away the extra plastic.
-
+  
+**Paint - Liquitex Acrylic Basic Fluid** (if you dont want to fight the quick calibrator, stick to these exact paints, others will be supported later)
+* **Cadmium Yellow Medium Hue**
+* **Phthanlocyanine Blue**
+* **Mars Black** (or carbon black, but mars black is cheaper an does the same for our use)
+* **Quinacridone Magenta**
+* **Titanium White**
+* 
 ---
 
 ## ⚙️ Firmware Installation (MKS TinyBee)
