@@ -38,7 +38,7 @@ To build the full 5-pump mixer, you will need:
 * **20x** 6mm M3 screws
 
 **Plumbing**
-* **Silicone Tubing:** 3mm ID x 5mm OD (8ft+ recommended) (larger and smaller sizes can fit, up to 8mm outer diameter. but i found 3mm inner diameter to be the sweet spot between flow and accuracy. inner diameter MUST be 2mm smaller than the outer diamter, or you can custom design your own insert to adjust the spacing. i left it modular for this reason)
+* **Silicone Tubing:** 3mm ID x 5mm OD (8ft+ recommended) Larger and smaller sizes can fit, up to 8mm outer diameter. But I found 3mm inner diameter to be the sweet spot between flow and accuracy. Inner diameter MUST be 2mm smaller than the outer diamter, or you can custom design your own insert to adjust the spacing. I left it modular for this reason
 * **5x** Mio "Water Enhancer" caps (or generic store brand equivalents. I used the Kroger/Smiths store brand in my original model for cost reasons). these bottle caps use squeeze valves that we will
   "harvest" by cutting away the extra plastic.
   
