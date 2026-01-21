@@ -33,6 +33,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.mejustmix.data.ConnectionType
+
 
 /**
  * Expandable section header for settings
@@ -93,6 +95,7 @@ fun SettingsModal(
     onDismissRequest: () -> Unit
 ) {
     val uiState by settingsViewModel.uiState.collectAsState()
+    val activeMachine by settingsViewModel.machineManager.activeMachine.collectAsState()
     val context = LocalContext.current
     
     // Expanded sections state - connection expanded by default
@@ -337,27 +340,92 @@ fun SettingsModal(
                             modifier = Modifier.padding(horizontal = 4.dp),
                             verticalArrangement = Arrangement.spacedBy(12.dp)
                         ) {
-                            OutlinedTextField(
-                                value = uiState.ipAddress,
-                                onValueChange = { settingsViewModel.updateIpAddress(it) },
-                                label = { Text("FluidNC IP Address") },
-                                modifier = Modifier.fillMaxWidth()
-                            )
-                            
-                            Button(
-                                onClick = {
-                                    try {
-                                        val url = "http://${uiState.ipAddress}"
-                                        val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url))
-                                        context.startActivity(intent)
-                                    } catch (e: Exception) {}
-                                },
+                            // Connection Mode Toggle
+                            Card(
                                 modifier = Modifier.fillMaxWidth(),
-                                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.tertiary)
+                                colors = CardDefaults.cardColors(
+                                    containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f)
+                                )
                             ) {
-                                Icon(Icons.Default.Public, contentDescription = null, modifier = Modifier.size(18.dp))
-                                Spacer(Modifier.width(8.dp))
-                                Text("Open FluidNC Web Control")
+                                Column(modifier = Modifier.padding(16.dp)) {
+                                    Text(
+                                        "Connection Mode",
+                                        style = MaterialTheme.typography.titleMedium,
+                                        fontWeight = FontWeight.SemiBold
+                                    )
+                                    Spacer(modifier = Modifier.height(8.dp))
+                                    
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                    ) {
+                                        // BLE Button
+                                        FilterChip(
+                                            selected = (uiState.connectionMode ?: ConnectionType.WIFI) == ConnectionType.BLE,
+                                            onClick = { settingsViewModel.setConnectionMode(ConnectionType.BLE) },
+                                            label = { Text("Bluetooth") },
+                                            leadingIcon = {
+                                                Icon(
+                                                    Icons.Default.Bluetooth,
+                                                    contentDescription = null,
+                                                    modifier = Modifier.size(18.dp)
+                                                )
+                                            },
+                                            modifier = Modifier.weight(1f)
+                                        )
+                                        
+                                        // WiFi Button
+                                        FilterChip(
+                                            selected = (uiState.connectionMode ?: ConnectionType.WIFI) == ConnectionType.WIFI,
+                                            onClick = { settingsViewModel.setConnectionMode(ConnectionType.WIFI) },
+                                            label = { Text("WiFi") },
+                                            leadingIcon = {
+                                                Icon(
+                                                    Icons.Default.Wifi,
+                                                    contentDescription = null,
+                                                    modifier = Modifier.size(18.dp)
+                                                )
+                                            },
+                                            modifier = Modifier.weight(1f)
+                                        )
+                                    }
+                                    
+                                    // Show current connection info
+                                    Text(
+                                        text = when (uiState.connectionMode ?: ConnectionType.WIFI) {
+                                            ConnectionType.BLE -> "Using Bluetooth connection"
+                                            ConnectionType.WIFI -> "Using WiFi connection"
+                                        },
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                            }
+                            
+                            // Show IP field only in WiFi mode
+                            if (uiState.connectionMode == ConnectionType.WIFI || uiState.connectionMode == null) {
+                                OutlinedTextField(
+                                    value = uiState.ipAddress,
+                                    onValueChange = { settingsViewModel.updateIpAddress(it) },
+                                    label = { Text("FluidNC IP Address") },
+                                    modifier = Modifier.fillMaxWidth()
+                                )
+                                
+                                Button(
+                                    onClick = {
+                                        try {
+                                            val url = "http://${uiState.ipAddress}"
+                                            val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url))
+                                            context.startActivity(intent)
+                                        } catch (e: Exception) {}
+                                    },
+                                    modifier = Modifier.fillMaxWidth(),
+                                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.tertiary)
+                                ) {
+                                    Icon(Icons.Default.Public, contentDescription = null, modifier = Modifier.size(18.dp))
+                                    Spacer(Modifier.width(8.dp))
+                                    Text("Open FluidNC Web Control")
+                                }
                             }
                             
                             Row(verticalAlignment = Alignment.CenterVertically) {

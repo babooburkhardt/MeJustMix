@@ -22,9 +22,12 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
+import android.Manifest
+import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.example.mejustmix.data.ConnectionType
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -46,6 +49,10 @@ fun MainScreen() {
     var showSettingsDialog by rememberSaveable { mutableStateOf(false) }
     var showSinglePumpDialogIndex by rememberSaveable { mutableStateOf<Int?>(null) }
     
+    // Connection mode selection dialogs
+    var showConnectionModeDialog by rememberSaveable { mutableStateOf(false) }
+    var showBLEPermissionDialog by rememberSaveable { mutableStateOf(false) }
+    
     // Spectral Data Import Launcher
     val spectralImportLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.OpenDocument()
@@ -53,7 +60,82 @@ fun MainScreen() {
         uri?.let { settingsViewModel.importSpectralData(it) }
     }
     
+    // Location permission launcher for BLE
+    val locationPermissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission()
+    ) { isGranted ->
+        if (isGranted) {
+            // Permission granted - start BLE scan
+            settingsViewModel.startBLEScan()
+            Toast.makeText(context, "Bluetooth enabled. Scanning for devices...", Toast.LENGTH_SHORT).show()
+        } else {
+            // Permission denied - fall back to WiFi
+            settingsViewModel.setConnectionMode(ConnectionType.WIFI)
+            Toast.makeText(
+                context,
+                "Location permission denied. Using WiFi mode.",
+                Toast.LENGTH_LONG
+            ).show()
+        }
+    }
+    
+    // First launch check - show connection mode selection if not configured
+    LaunchedEffect(Unit) {
+        if (settingsState.connectionMode == null) {
+            showConnectionModeDialog = true
+        }
+    }
+    
     val snackbarHostState = remember { SnackbarHostState() }
+    
+    // Connection mode selection dialog
+    if (showConnectionModeDialog) {
+        ConnectionModeSelectionDialog(
+            onModeSelected = { mode ->
+                when (mode) {
+                    ConnectionType.BLE -> {
+                        // Show permission explanation before requesting
+                        showBLEPermissionDialog = true
+                    }
+                    ConnectionType.WIFI -> {
+                        // Set WiFi mode directly, no permission needed
+                        settingsViewModel.setConnectionMode(ConnectionType.WIFI)
+                        Toast.makeText(context, "WiFi mode selected", Toast.LENGTH_SHORT).show()
+                    }
+                }
+                showConnectionModeDialog = false
+            },
+            onDismiss = {
+                // If dismissed without selection, default to WiFi
+                if (settingsState.connectionMode == null) {
+                    settingsViewModel.setConnectionMode(ConnectionType.WIFI)
+                }
+                showConnectionModeDialog = false
+            }
+        )
+    }
+    
+    // BLE permission explanation dialog
+    if (showBLEPermissionDialog) {
+        BLEPermissionExplanationDialog(
+            onRequestPermission = {
+                // User agreed - request location permission
+                locationPermissionLauncher.launch(Manifest.permission.ACCESS_FINE_LOCATION)
+                showBLEPermissionDialog = false
+            },
+            onUseWiFiInstead = {
+                // User chose WiFi instead
+                settingsViewModel.setConnectionMode(ConnectionType.WIFI)
+                Toast.makeText(context, "WiFi mode selected", Toast.LENGTH_SHORT).show()
+                showBLEPermissionDialog = false
+            },
+            onDismiss = {
+                // Dismissed - default to WiFi
+                settingsViewModel.setConnectionMode(ConnectionType.WIFI)
+                showBLEPermissionDialog = false
+            }
+        )
+    }
     
     LaunchedEffect(pumpWarning) {
         pumpWarning?.let {

@@ -6,10 +6,13 @@ import android.widget.Toast
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
 import androidx.lifecycle.AndroidViewModel
+import com.example.mejustmix.data.ConnectionType
+import com.example.mejustmix.data.MachineManager
 import com.example.mejustmix.services.PigmentStrengths
 import com.example.mejustmix.services.KSColor
 import com.example.mejustmix.services.KSPigmentDatabase
 import com.example.mejustmix.services.KubelkaMunkColorMixing
+import com.example.mejustmix.services.UnifiedBLEScanner
 import com.example.mejustmix.utils.PulseModeCalculator
 import com.example.mejustmix.services.SpectralSensorManager
 import com.google.gson.Gson
@@ -37,6 +40,7 @@ data class PumpConfig(
 data class SettingsUiState(
     val ipAddress: String = "192.168.1.100",
     val webPortalPort: String = "81",
+    val connectionMode: ConnectionType? = null, // null = not set yet, defaults to WiFi
     val flowRate: String = "2.0",
     val retractionSteps: String = "15.0",
     val useManualBase: Boolean = false,
@@ -85,6 +89,12 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
     
     // Spectral Manager
     private val spectralManager = SpectralSensorManager(application)
+    
+    // Machine Manager for multi-machine support
+    val machineManager = MachineManager(application)
+    
+    // Unified BLE Scanner
+    private val bleScanner = UnifiedBLEScanner(application)
 
     private val prefs = application.getSharedPreferences("mejustmix_settings", Context.MODE_PRIVATE)
     private val gson = Gson()
@@ -95,6 +105,19 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
         // Auto-connect to Spectral Sensor if available
         if (uiState.value.spectralSensorEnabled) {
             spectralManager.scanAndAutoConnect()
+        }
+        
+        // Setup BLE device discovery callbacks
+        bleScanner.onFluidNCFound = { device ->
+            // Notify user of discovered FluidNC device
+            // This will be handled in the UI layer
+        }
+        
+        bleScanner.onSpectralSensorFound = { device ->
+            // Auto-enable spectral sensor if found
+            if (!uiState.value.spectralSensorEnabled) {
+                // Notify user to connect
+            }
         }
         
         // Collect Spectral State
@@ -643,5 +666,46 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
                 showToast("Import failed: ${e.message}")
             }
         }
+    }
+    
+    // --- BLE Device Discovery ---
+    
+    /**
+     * Start scanning for BLE devices (FluidNC + Spectral Sensor).
+     */
+    fun startBLEScan() {
+        bleScanner.startScanning()
+    }
+    
+    /**
+     * Stop BLE scanning.
+     */
+    fun stopBLEScan() {
+        bleScanner.stopScanning()
+    }
+    
+    /**
+     * Get discovered FluidNC devices.
+     */
+    fun getDiscoveredFluidNCDevices() = bleScanner.fluidNCDevices
+    
+    /**
+     * Get discovered spectral sensors.
+     */
+    fun getDiscoveredSpectralSensors() = bleScanner.spectralSensors
+    
+    /**
+     * Check if currently scanning.
+     */
+    fun isScanning() = bleScanner.isScanningState
+    
+    // --- Connection Mode ---
+    
+    /**
+     * Set the connection mode (BLE or WiFi).
+     */
+    fun setConnectionMode(mode: ConnectionType) {
+        _uiState.update { it.copy(connectionMode = mode) }
+        saveSettings()
     }
 }

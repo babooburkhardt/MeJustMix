@@ -2,6 +2,7 @@ package com.example.mejustmix.data
 
 import android.content.Context
 import com.example.mejustmix.services.FluidNCService
+import com.example.mejustmix.services.FluidNCBLEManager
 import com.example.mejustmix.services.FluidNCStatus
 import com.example.mejustmix.services.GCodeGenerator
 import com.example.mejustmix.ui.PumpConfig
@@ -9,14 +10,23 @@ import com.example.mejustmix.ui.SettingsUiState
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.delay
 
 /**
  * Repository for handling interactions with the FluidNC Printer.
+ * Supports both BLE and WiFi connection modes.
  * Manages connection, GCode generation, and sending.
  */
 class PrinterRepository(private val context: Context) {
 
+    // WiFi connection (HTTP)
     private var fluidNCService: FluidNCService? = null
+    
+    // BLE connection
+    private var bleManager: FluidNCBLEManager? = null
+    
+    // Current connection type
+    private var currentConnectionType: ConnectionType? = null
     
     private val _connectionStatus = MutableStateFlow<FluidNCStatus?>(null)
     val connectionStatus = _connectionStatus.asStateFlow()
@@ -27,6 +37,53 @@ class PrinterRepository(private val context: Context) {
     private val _isSending = MutableStateFlow(false)
     val isSending = _isSending.asStateFlow()
 
+    /**
+     * Connect to a machine using its profile.
+     */
+    fun connectToMachine(machine: MachineProfile) {
+        disconnect()
+        
+        when (machine.connectionType) {
+            ConnectionType.BLE -> connectBLE(machine)
+            ConnectionType.WIFI -> connectWiFi(machine)
+        }
+        
+        currentConnectionType = machine.connectionType
+    }
+    
+    /**
+     * Connect via BLE.
+     */
+    private fun connectBLE(machine: MachineProfile) {
+        bleManager = FluidNCBLEManager(context)
+        
+        // Monitor BLE connection state and convert to FluidNCStatus
+        // TODO: Collect bleManager.connectionState and map to FluidNCStatus
+        
+        if (!machine.bleAddress.isNullOrBlank()) {
+            bleManager?.connectByAddress(machine.bleAddress)
+        } else if (!machine.bleDeviceName.isNullOrBlank()) {
+            bleManager?.connect(machine.bleDeviceName)
+        }
+    }
+    
+    /**
+     * Connect via WiFi (legacy HTTP mode).
+     */
+    private fun connectWiFi(machine: MachineProfile) {
+        if (machine.ipAddress.isNullOrBlank()) return
+        
+        fluidNCService = FluidNCService(
+            context = context,
+            onStatusChange = { status -> _connectionStatus.value = status },
+            onGCodeSent = { gcode -> _gcodeHistory.update { it + ">> $gcode" } }
+        )
+        fluidNCService?.connect(machine.ipAddress, 23)
+    }
+
+    /**
+     * Legacy WiFi-only connect (for backward compatibility).
+     */
     fun connect(ipAddress: String) {
         disconnect()
         fluidNCService = FluidNCService(
@@ -35,12 +92,18 @@ class PrinterRepository(private val context: Context) {
             onGCodeSent = { gcode -> _gcodeHistory.update { it + ">> $gcode" } }
         )
         fluidNCService?.connect(ipAddress, 23)
+        currentConnectionType = ConnectionType.WIFI
     }
 
     fun disconnect() {
         fluidNCService?.disconnect()
         fluidNCService = null
+        
+        bleManager?.disconnect()
+        bleManager = null
+        
         _connectionStatus.value = null
+        currentConnectionType = null
     }
 
     fun addToHistory(msg: String) {
@@ -89,7 +152,7 @@ class PrinterRepository(private val context: Context) {
             
             if (gcode.isEmpty()) return DispenseResult.Error("Generated G-Code is empty")
             
-            fluidNCService?.sendMultiple(gcode)
+            sendGCodeCommands(gcode)
             DispenseResult.Success(actualVolume)
             
         } catch (e: Exception) {
@@ -113,7 +176,7 @@ class PrinterRepository(private val context: Context) {
                 stepsPerMl = stepsPerMl,
                 flowRateMlPerSec = flowRate
             )
-            fluidNCService?.sendMultiple(primeGcode)
+            sendGCodeCommands(primeGcode)
         } catch (e: Exception) {
             addToHistory(">> Error priming: ${e.message}")
         } finally {
@@ -190,7 +253,7 @@ class PrinterRepository(private val context: Context) {
             dispensed = vol
             
             if (gcode.isNotEmpty()) {
-                fluidNCService?.sendMultiple(gcode)
+                sendGCodeCommands(gcode)
                 addToHistory(">> Homed ${pump.name}")
             } else {
                 addToHistory(">> ${pump.name} already home")
@@ -204,7 +267,27 @@ class PrinterRepository(private val context: Context) {
     }
     
     fun sendRaw(gcode: List<String>) {
-         fluidNCService?.sendMultiple(gcode)
+        sendGCodeCommands(gcode)
+    }
+    
+    /**
+     * Send G-code commands to the active connection (BLE or WiFi).
+     */
+    private fun sendGCodeCommands(commands: List<String>) {
+        when (currentConnectionType) {
+            ConnectionType.BLE -> {
+                commands.forEach { command ->
+                    bleManager?.sendGCode(command)
+                    _gcodeHistory.update { it + ">> $command" }
+                }
+            }
+            ConnectionType.WIFI -> {
+                fluidNCService?.sendMultiple(commands)
+            }
+            null -> {
+                addToHistory(">> Error: Not connected")
+            }
+        }
     }
 
     private fun checkConnection(bypass: Boolean): Boolean {
