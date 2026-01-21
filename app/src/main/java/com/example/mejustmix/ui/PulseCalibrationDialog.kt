@@ -50,92 +50,12 @@ fun PulseCalibrationDialog(
     var currentStep by remember { mutableStateOf(1) }
     var trackedOffsetSteps by remember { mutableStateOf(pump.pulseHomeOffset) }
     var hasPrimed by remember { mutableStateOf(false) }
-    var testPulseCount by remember { mutableStateOf(10) }
-    var isDispensing by remember { mutableStateOf(false) }
-    var hasDispensed by remember { mutableStateOf(false) }
-    var measuredMlText by remember { mutableStateOf("") }
-    var calibrationRuns by remember { mutableStateOf(listOf<CalibrationRun>()) }
-    var showHelp by remember { mutableStateOf(false) }
-    var showSaveConfirmation by remember { mutableStateOf(false) }
-    var showMotorConfigDialog by remember { mutableStateOf(false) }
-    var customStepsPerPulse by remember { mutableStateOf<Float?>(null) }
     
-    val scope = rememberCoroutineScope()
-    
-    // Use custom steps per pulse if set, otherwise calculate from motor specs
-    val stepsPerPulse = customStepsPerPulse ?: PulseModeCalculator.calculateStepsPerPulse(
-        stepAngle = 1.8f,      // Default NEMA 17
-        gearReduction = 4f,    // Default 1:4
-        rollerCount = 3        // Default 3 rollers
+    val stepsPerPulse = PulseModeCalculator.calculateStepsPerPulse(
+        stepAngle = 1.8f,
+        gearReduction = 4f,
+        rollerCount = 3
     )
-    
-    val calculatedMlPerPulse = remember(measuredMlText, testPulseCount) {
-        val measured = measuredMlText.toFloatOrNull() ?: 0f
-        if (testPulseCount > 0 && measured > 0) measured / testPulseCount else null
-    }
-    
-    // Validation
-    val isValidMeasurement = remember(measuredMlText, testPulseCount) {
-        val measured = measuredMlText.toFloatOrNull()
-        measured != null && measured > 0 && measured < (testPulseCount * 2.5f)
-    }
-    
-    // Calculate average from all runs
-    val averageMlPerPulse = remember(calibrationRuns) {
-        if (calibrationRuns.isEmpty()) null
-        else calibrationRuns.map { it.mlPerPulse }.average().toFloat()
-    }
-    
-    val stdDev = remember(calibrationRuns) {
-        if (calibrationRuns.size < 2) null
-        else {
-            val avg = calibrationRuns.map { it.mlPerPulse }.average()
-            val variance = calibrationRuns.map { (it.mlPerPulse - avg) * (it.mlPerPulse - avg) }.average()
-            kotlin.math.sqrt(variance).toFloat()
-        }
-    }
-    
-    // Save confirmation dialog
-    if (showSaveConfirmation) {
-        val valueToSave = averageMlPerPulse ?: calculatedMlPerPulse ?: 0.5f
-        AlertDialog(
-            onDismissRequest = { showSaveConfirmation = false },
-            title = { Text("Save Calibration?") },
-            text = {
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text("This will update ${pump.name}:")
-                    Text(
-                        "New value: ${String.format("%.3f", valueToSave)} mL/pulse",
-                        fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.primary
-                    )
-                    if (calibrationRuns.size >= 2) {
-                        Text("Based on ${calibrationRuns.size} runs (averaged)", 
-                            style = MaterialTheme.typography.bodySmall)
-                    }
-                    Spacer(Modifier.height(8.dp))
-                    Text("What this means:", style = MaterialTheme.typography.labelMedium)
-                    Text("• 1 pulse = ${String.format("%.2f", valueToSave)} mL", 
-                        style = MaterialTheme.typography.bodySmall)
-                    Text("• 10 mL requires ~${(10f / valueToSave).roundToInt()} pulses",
-                        style = MaterialTheme.typography.bodySmall)
-                }
-            },
-            confirmButton = {
-                Button(onClick = {
-                    onSave(valueToSave)
-                    showSaveConfirmation = false
-                }) {
-                    Text("Save")
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { showSaveConfirmation = false }) {
-                    Text("Cancel")
-                }
-            }
-        )
-    }
 
     Dialog(
         onDismissRequest = onDismiss,
@@ -146,7 +66,7 @@ fun PulseCalibrationDialog(
                 modifier = Modifier.padding(20.dp).verticalScroll(rememberScrollState()),
                 verticalArrangement = Arrangement.spacedBy(16.dp)
             ) {
-                // Header with restart button
+                // Header
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween,
@@ -156,59 +76,76 @@ fun PulseCalibrationDialog(
                         Text("Pump Homing", style = MaterialTheme.typography.titleLarge)
                         Text(pump.name, style = MaterialTheme.typography.bodyMedium, color = Color.Gray)
                     }
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        if (currentStep > 1) {
-                            IconButton(onClick = {
-                                currentStep = 1
-                                hasPrimed = false
-                                hasDispensed = false
-                                isDispensing = false
-                                measuredMlText = ""
-                                calibrationRuns = emptyList()
-                            }) {
-                                Icon(Icons.Default.Refresh, "Start Over")
-                            }
-                        }
-                        IconButton(onClick = onDismiss) {
-                            Icon(Icons.Default.Close, "Close")
-                        }
+                    IconButton(onClick = onDismiss) {
+                        Icon(Icons.Default.Close, "Close")
                     }
                 }
                 
-                // Motor specs info
-                Card(colors = CardDefaults.cardColors(
-                    containerColor = MaterialTheme.colorScheme.tertiaryContainer.copy(alpha = 0.2f)
-                )) {
-                    Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                        Text("Pump Homing:", style = MaterialTheme.typography.labelMedium)
-                        Text(
-                            "Align pump rollers to home position before dispensing",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = Color.Gray
-                        )
-                        Text(
-                            "1.8° motor, 1:4 gear, 3 rollers = ${stepsPerPulse.toInt()} steps/pulse",
-                            fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.primary
-                        )
-                    }
-                }
-                
-                // Visual stepper
-                VisualStepper(currentStep)
-                
-                // Help section
-                TextButton(
-                    onClick = { showHelp = !showHelp },
-                    modifier = Modifier.fillMaxWidth()
+                // Simple 2-step indicator
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceEvenly,
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Icon(Icons.Default.Info, null, modifier = Modifier.size(18.dp))
-                    Spacer(Modifier.width(4.dp))
-                    Text(if (showHelp) "Hide Tips" else "Show Tips")
-                }
-                
-                AnimatedVisibility(visible = showHelp) {
-                    HelpCard()
+                    val steps = listOf("Home", "Prime")
+                    
+                    steps.forEachIndexed { index, label ->
+                        Column(
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .size(40.dp)
+                                    .clip(CircleShape)
+                                    .background(
+                                        color = when {
+                                            index + 1 < currentStep -> MaterialTheme.colorScheme.primary
+                                            index + 1 == currentStep -> MaterialTheme.colorScheme.secondary
+                                            else -> Color.LightGray.copy(alpha = 0.3f)
+                                        }
+                                    ),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                if (index + 1 < currentStep) {
+                                    Icon(
+                                        Icons.Default.Check,
+                                        null,
+                                        tint = Color.White,
+                                        modifier = Modifier.size(20.dp)
+                                    )
+                                } else {
+                                    Text(
+                                        "${index + 1}",
+                                        color = if (index + 1 == currentStep) Color.White else Color.Gray,
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                }
+                            }
+                            Spacer(Modifier.height(4.dp))
+                            Text(
+                                label,
+                                style = MaterialTheme.typography.labelSmall,
+                                fontWeight = if (index + 1 == currentStep) FontWeight.Bold else FontWeight.Normal,
+                                color = if (index + 1 == currentStep) MaterialTheme.colorScheme.primary else Color.Gray
+                            )
+                        }
+                        
+                        if (index < steps.size - 1) {
+                            Box(
+                                modifier = Modifier
+                                    .weight(0.5f)
+                                    .height(2.dp)
+                                    .background(
+                                        if (index + 1 < currentStep)
+                                            MaterialTheme.colorScheme.primary
+                                        else
+                                            Color.LightGray.copy(alpha = 0.3f)
+                                    )
+                                    .align(Alignment.CenterVertically)
+                            )
+                        }
+                    }
                 }
                 
                 HorizontalDivider()
@@ -223,43 +160,7 @@ fun PulseCalibrationDialog(
                         pump, trackedOffsetSteps, stepsPerPulse, hasPrimed,
                         onPrime = { onPrimeToPulseHome(); hasPrimed = true },
                         onBack = { currentStep = 1 },
-                        onNext = { currentStep = 3 }
-                    )
-                    3 -> Step3Dispense(
-                        pump, testPulseCount, isDispensing, hasDispensed,
-                        onPulseCountChange = { testPulseCount = it },
-                        onDispense = {
-                            isDispensing = true
-                            hasDispensed = false
-                            onDispensePulses(testPulseCount)
-                            // Estimate duration (2 seconds per pulse)
-                            scope.launch {
-                                delay((testPulseCount * 2000L))
-                                isDispensing = false
-                                hasDispensed = true
-                            }
-                        },
-                        onBack = { currentStep = 2 },
-                        onNext = { currentStep = 4 }
-                    )
-                    4 -> Step4Measure(
-                        testPulseCount, measuredMlText, calculatedMlPerPulse,
-                        isValidMeasurement, calibrationRuns, averageMlPerPulse, stdDev,
-                        onMeasuredMlChange = { measuredMlText = it },
-                        onAddRun = {
-                            val measured = measuredMlText.toFloatOrNull()!!
-                            val mlPerPulse = measured / testPulseCount
-                            calibrationRuns = calibrationRuns + CalibrationRun(
-                                testPulseCount, measured, mlPerPulse
-                            )
-                            // Reset for next run
-                            hasDispensed = false
-                            isDispensing = false
-                            measuredMlText = ""
-                            currentStep = 3
-                        },
-                        onBack = { currentStep = 3 },
-                        onSave = { showSaveConfirmation = true }
+                        onNext = { onDismiss() } // Just close after priming
                     )
                 }
             }
@@ -405,13 +306,10 @@ fun Step2Prime(
     onNext: () -> Unit
 ) {
     // Calculate forward movement to next home position
-    // Always moves forward to avoid air gaps
     val currentPhase = ((trackedOffsetSteps % stepsPerPulse) + stepsPerPulse) % stepsPerPulse
     val stepsToMove = if (currentPhase == 0f) {
-        // Already aligned at home - move forward one full pulse
         stepsPerPulse.toInt()
     } else {
-        // Not aligned - move forward to next home position
         (stepsPerPulse - currentPhase).toInt()
     }
     
@@ -422,7 +320,23 @@ fun Step2Prime(
             Column(modifier = Modifier.padding(12.dp)) {
                 Text("Prime pump forward to home position.", fontWeight = FontWeight.Bold)
                 Spacer(Modifier.height(4.dp))
-                Text("Will move $stepsToMove steps forward (removes any air).", color = MaterialTheme.colorScheme.primary)
+                Text("Will move $stepsToMove steps forward.", color = MaterialTheme.colorScheme.primary)
+            }
+        }
+        
+        // Warning card
+        Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.3f))) {
+            Row(
+                modifier = Modifier.padding(12.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Icon(Icons.Default.Warning, null, tint = MaterialTheme.colorScheme.error)
+                Spacer(Modifier.width(8.dp))
+                Text(
+                    "⚠️ Warning: Priming will dispense paint. Have a container ready!",
+                    color = MaterialTheme.colorScheme.error,
+                    fontWeight = FontWeight.Medium
+                )
             }
         }
         
@@ -447,7 +361,7 @@ fun Step2Prime(
                 ) {
                     Icon(Icons.Default.CheckCircle, null, tint = MaterialTheme.colorScheme.primary)
                     Spacer(Modifier.width(8.dp))
-                    Text("Ready for test dispense!")
+                    Text("Pump is homed and ready!")
                 }
             }
         }
@@ -459,9 +373,9 @@ fun Step2Prime(
                 Text("Back")
             }
             Button(onClick = onNext, enabled = hasPrimed) {
-                Text("Next: Dispense")
+                Text("Done")
                 Spacer(Modifier.width(4.dp))
-                Icon(Icons.Default.ArrowForward, null, modifier = Modifier.size(18.dp))
+                Icon(Icons.Default.Check, null, modifier = Modifier.size(18.dp))
             }
         }
     }
