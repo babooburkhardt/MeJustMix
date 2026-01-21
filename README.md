@@ -1,4 +1,4 @@
-# MeJustMix
+_# MeJustMix
 
 **MeJustMix** is the Android app controller for a DIY paint mixing machine. It handles the brains of the operation so you can mix paints (or whatever else you're pumping) without the headache.
 
@@ -9,6 +9,8 @@
 ## 🛠️ The Hardware
 For the STLs, and motor mounts, head over to the project page:
 👉 **[MeJustMix on Printables](https://www.printables.com/model/1563458-mejustmix)**
+
+## Assembly guide is currently AI generated. and onyl handles all the electrical side. as it cannot understand STLs. im working on it myself, so treat the scurrent guide as something to fill the gap
 
 ### Bill of Materials (BOM)     ..if i forgot something i apologize.. still a WIP
 To build the full 5-pump mixer, you will need:
@@ -145,3 +147,4 @@ This work is licensed under the **Creative Commons Attribution-NonCommercial 4.0
 
 * **Attribution:** Give credit where it's due.
 * **Non-Commercial:** You may not use this work for commercial purposes without my explicit permission.
+_
