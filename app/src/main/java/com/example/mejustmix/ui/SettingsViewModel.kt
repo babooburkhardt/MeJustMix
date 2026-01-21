@@ -26,15 +26,16 @@ import androidx.lifecycle.viewModelScope
 data class PumpConfig(
     val name: String,
     val axis: String,
-    val calibration: String = "100.0", // steps per mL
+    val axisIndex: Int = 0,                  // FluidNC axis index for $12X commands (X=0, Y=1, Z=2, A=3, B=4)
+    val calibration: String = "100.0",       // steps per mL
     val currentVolumeMl: Float = 100f,
     val maxVolumeMl: Float = 100f,
     val colorArgb: Int = Color.Cyan.toArgb(),
     
     // Pulse mode calibration
-    val stepsPerPulse: Float = 50f,      // Steps for one complete roller rotation
-    val mlPerPulse: Float = 0.5f,        // mL dispensed per pulse (calibrated)
-    val pulseHomeOffset: Float = 0f      // Steps from current position to pulse boundary (0 = at home)
+    val stepsPerPulse: Float = 50f,          // Steps for one complete roller rotation
+    val mlPerPulse: Float = 0.5f,            // mL dispensed per pulse (calibrated)
+    val pulseHomeOffset: Float = 0f          // Steps from current position to pulse boundary (0 = at home)
 )
 
 data class SettingsUiState(
@@ -51,16 +52,16 @@ data class SettingsUiState(
     val pigmentStrengths: PigmentStrengths = PigmentStrengths(),
     val pumps: List<PumpConfig> = listOf(
         // Phthalocyanine Blue GS (#0074A2) - Deep, realistic Cyan
-        PumpConfig("Cyan", "X", "100.0", 100f, 100f, Color(0xFF0074A2).toArgb()),
+        PumpConfig("Cyan", "X", axisIndex = 0, calibration = "100.0", currentVolumeMl = 100f, maxVolumeMl = 100f, colorArgb = Color(0xFF0074A2).toArgb()),
         
         // Quinacridone Magenta (#9F005D) - Deep, berry-like Magenta
-        PumpConfig("Magenta", "Y", "100.0", 100f, 100f, Color(0xFF9F005D).toArgb()),
+        PumpConfig("Magenta", "Y", axisIndex = 1, calibration = "100.0", currentVolumeMl = 100f, maxVolumeMl = 100f, colorArgb = Color(0xFF9F005D).toArgb()),
         
         // Cadmium Yellow Medium Hue (#FFD800) - Warm, golden Yellow (not neon)
-        PumpConfig("Yellow", "Z", "100.0", 100f, 100f, Color(0xFFFFD800).toArgb()),
+        PumpConfig("Yellow", "Z", axisIndex = 2, calibration = "100.0", currentVolumeMl = 100f, maxVolumeMl = 100f, colorArgb = Color(0xFFFFD800).toArgb()),
         
-        PumpConfig("Black", "A", "100.0", 100f, 100f, Color.Black.toArgb()),
-        PumpConfig("White", "B", "100.0", 100f, 100f, Color.White.toArgb())
+        PumpConfig("Black", "A", axisIndex = 3, calibration = "100.0", currentVolumeMl = 100f, maxVolumeMl = 100f, colorArgb = Color.Black.toArgb()),
+        PumpConfig("White", "B", axisIndex = 4, calibration = "100.0", currentVolumeMl = 100f, maxVolumeMl = 100f, colorArgb = Color.White.toArgb())
     ),
     
     // Kubelka-Munk settings (now using 3-channel K/S) - DEFAULT ON
@@ -79,6 +80,10 @@ data class SettingsUiState(
     val pillowLengthMm: Float = 40f,        // Total pillow length
     val tubeInnerDiameterMm: Float = 3f,    // Tube bore (for volume calculations)
     val fullDiameterSectionMm: Float = 32f, // Length at full tube expansion
+    
+    // Dynamic acceleration control
+    val useDynamicAcceleration: Boolean = false,  // Enable FluidNC acceleration adjustment
+    val taperAcceleration: Float = 500f,          // Acceleration for taper zones (mm/s²)
     
     // Spectral Sensor State
     val spectralSensorEnabled: Boolean = false,
@@ -766,6 +771,22 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
         // Ensure full section <= pillow length
         val clamped = length.coerceIn(5f, currentState.pillowLengthMm - 1f)
         _uiState.update { it.copy(fullDiameterSectionMm = clamped) }
+        saveSettings()
+    }
+    
+    /**
+     * Enable or disable dynamic acceleration control.
+     */
+    fun setUseDynamicAcceleration(enabled: Boolean) {
+        _uiState.update { it.copy(useDynamicAcceleration = enabled) }
+        saveSettings()
+    }
+    
+    /**
+     * Update the taper zone acceleration (mm/s²).
+     */
+    fun setTaperAcceleration(value: Float) {
+        _uiState.update { it.copy(taperAcceleration = value.coerceIn(50f, 2000f)) }
         saveSettings()
     }
 }

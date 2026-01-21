@@ -853,6 +853,51 @@ fun SettingsModal(
                                                 )
                                             }
                                         }
+                                        
+                                        // --- Dynamic Acceleration Control ---
+                                        HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
+                                        
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            horizontalArrangement = Arrangement.SpaceBetween,
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Column(modifier = Modifier.weight(1f)) {
+                                                Text(
+                                                    "🚀 Dynamic Acceleration",
+                                                    fontWeight = FontWeight.SemiBold,
+                                                    style = MaterialTheme.typography.bodyMedium
+                                                )
+                                                Text(
+                                                    "Adjust FluidNC acceleration for taper zones",
+                                                    style = MaterialTheme.typography.bodySmall,
+                                                    color = Color.Gray
+                                                )
+                                            }
+                                            Switch(
+                                                checked = uiState.useDynamicAcceleration,
+                                                onCheckedChange = { settingsViewModel.setUseDynamicAcceleration(it) }
+                                            )
+                                        }
+                                        
+                                        if (uiState.useDynamicAcceleration) {
+                                            OutlinedTextField(
+                                                value = String.format("%.0f", uiState.taperAcceleration),
+                                                onValueChange = { 
+                                                    it.toFloatOrNull()?.let { v -> settingsViewModel.setTaperAcceleration(v) }
+                                                },
+                                                label = { Text("Taper Accel (mm/s²)") },
+                                                modifier = Modifier.fillMaxWidth(),
+                                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                                                singleLine = true,
+                                                supportingText = {
+                                                    Text(
+                                                        "Range: 50-2000 mm/s². Higher = faster transitions.",
+                                                        style = MaterialTheme.typography.bodySmall
+                                                    )
+                                                }
+                                            )
+                                        }
                                     }
                                 }
                             }

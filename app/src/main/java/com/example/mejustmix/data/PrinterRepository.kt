@@ -157,7 +157,9 @@ class PrinterRepository private constructor(context: Context) {
                     flowRateMlPerSec = settings.flowRate.toFloatOrNull() ?: 2.0f,
                     usePulseMode = true,
                     pulseMinimum = settings.pulseMinimum,
-                    pulseProfile = profile
+                    pulseProfile = profile,
+                    useDynamicAcceleration = settings.useDynamicAcceleration,
+                    taperAcceleration = settings.taperAcceleration
                 )
                 
                 // For pulse mode, we need to calculate actual volume from the profile

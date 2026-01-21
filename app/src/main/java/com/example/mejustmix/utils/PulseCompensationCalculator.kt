@@ -22,7 +22,8 @@ object PulseCompensationCalculator {
         val taperSpeedMultiplier: Float,    // Speed multiplier for taper zones (typically 1.5-3.0)
         val nominalSpeedFraction: Float,    // Fraction of pillow at nominal speed (1.0 - 2*taperFraction)
         val taperLengthMm: Float,           // Calculated taper length in mm
-        val volumePerPillowMl: Float        // Estimated volume per pillow in mL
+        val volumePerPillowMl: Float,       // Estimated volume per pillow in mL
+        val optimalTaperAcceleration: Float // Recommended acceleration for taper zones (mm/s²)
     )
     
     /**
@@ -31,12 +32,14 @@ object PulseCompensationCalculator {
      * @param pillowLengthMm Total length of one pillow (roller to roller)
      * @param fullDiameterSectionMm Length where tube is at full expansion
      * @param tubeInnerDiameterMm Tube inner diameter (for volume calculation)
+     * @param baseFeedRate Base feed rate in mm/min (for acceleration calculation)
      * @return Computed pulse profile
      */
     fun calculateProfile(
         pillowLengthMm: Float,
         fullDiameterSectionMm: Float,
-        tubeInnerDiameterMm: Float = 3f
+        tubeInnerDiameterMm: Float = 3f,
+        baseFeedRate: Int = 1000
     ): PulseProfile {
         // Calculate taper length (each side)
         val taperLength = ((pillowLengthMm - fullDiameterSectionMm) / 2f).coerceAtLeast(0f)
@@ -59,12 +62,43 @@ object PulseCompensationCalculator {
         val totalVolumeMm3 = fullSectionVolume + (2 * taperVolume)
         val volumeMl = totalVolumeMm3 / 1000f // Convert mm³ to mL
         
+        // Calculate optimal acceleration for taper zones
+        // Goal: Match the volume gradient dV/dx in the taper
+        // 
+        // Physics:
+        // - Volume flow rate Q = A(x) * v(x) where A(x) is cross-sectional area, v(x) is velocity
+        // - For constant Q, if A increases linearly, v must decrease linearly
+        // - Linear velocity change over distance requires constant acceleration
+        // 
+        // Calculation:
+        // - Velocity change: Δv = v_fast - v_nominal = baseFeedRate * (taperSpeedMultiplier - 1)
+        // - Distance: taperLength (in mm)
+        // - Convert feed rate from mm/min to mm/s: baseFeedRate / 60
+        // - Acceleration a = (v_final² - v_initial²) / (2 * distance)
+        // 
+        // For entry taper (deceleration from fast to nominal):
+        val vFastMmPerSec = (baseFeedRate * taperSpeedMultiplier) / 60f
+        val vNominalMmPerSec = baseFeedRate / 60f
+        val taperLengthMeters = taperLength / 1000f // Convert mm to meters for calculation
+        
+        // Using kinematic equation: v² = u² + 2as, solve for a
+        // a = (v² - u²) / (2s)
+        val optimalAcceleration = if (taperLength > 0.1f) {
+            val deltaVSquared = (vNominalMmPerSec * vNominalMmPerSec) - (vFastMmPerSec * vFastMmPerSec)
+            val accelMmPerSecSquared = deltaVSquared / (2f * taperLength)
+            // Take absolute value and convert to positive (we want magnitude)
+            kotlin.math.abs(accelMmPerSecSquared).coerceIn(100f, 1500f)
+        } else {
+            500f // Default for very short tapers
+        }
+        
         return PulseProfile(
             taperFraction = taperFraction,
             taperSpeedMultiplier = taperSpeedMultiplier.coerceIn(1.2f, 4.0f),
             nominalSpeedFraction = (1f - (2f * taperFraction)).coerceAtLeast(0.1f),
             taperLengthMm = taperLength,
-            volumePerPillowMl = volumeMl
+            volumePerPillowMl = volumeMl,
+            optimalTaperAcceleration = optimalAcceleration
         )
     }
     
