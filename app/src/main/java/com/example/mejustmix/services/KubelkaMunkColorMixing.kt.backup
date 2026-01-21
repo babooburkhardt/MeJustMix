@@ -1,0 +1,422 @@
+package com.example.mejustmix.services
+
+import android.graphics.Color
+import com.example.mejustmix.data.PaintMix
+import kotlin.math.exp
+import kotlin.math.pow
+import kotlin.math.sqrt
+
+/**
+ * Spectral data for a single pigment across the visible spectrum.
+ * K = absorption coefficient, S = scattering coefficient
+ */
+data class SpectralData(
+    val wavelengths: List<Int>,
+    val kValues: List<Float>,
+    val sValues: List<Float>
+) {
+    init {
+        require(wavelengths.size == kValues.size && wavelengths.size == sValues.size) {
+            "Wavelengths, K, and S arrays must have the same length"
+        }
+    }
+}
+
+/**
+ * Complete pigment database with K/S values for CMYKW
+ */
+data class KubelkaMunkPigmentDatabase(
+    val cyan: SpectralData,
+    val magenta: SpectralData,
+    val yellow: SpectralData,
+    val black: SpectralData,
+    val white: SpectralData
+)
+
+/**
+ * Kubelka-Munk theory implementation for realistic subtractive color mixing.
+ * 
+ * The Kubelka-Munk model describes how light interacts with paint layers:
+ * - K: absorption coefficient (how much light is absorbed)
+ * - S: scattering coefficient (how much light is scattered)
+ * 
+ * For a mixture, K and S are additive based on pigment concentrations:
+ * K_mix = Σ(c_i * K_i)
+ * S_mix = Σ(c_i * S_i)
+ * 
+ * The reflectance is calculated using:
+ * R = 1 + (K/S) - sqrt((K/S)^2 + 2*(K/S))
+ */
+object KubelkaMunkColorMixing {
+    
+    // Use 31 wavelengths from 400nm to 700nm (10nm intervals) for high accuracy
+    private val STANDARD_WAVELENGTHS = (400..700 step 10).toList()
+    
+    /**
+     * Creates default spectral data for standard CMYKW pigments.
+     * These are approximations based on typical artist pigments.
+     * 
+     * For production use, these should be measured with a spectrophotometer
+     * or calibrated using known color mixing results.
+     */
+    fun createDefaultPigmentDatabase(): KubelkaMunkPigmentDatabase {
+        return KubelkaMunkPigmentDatabase(
+            cyan = createCyanSpectralData(),
+            magenta = createMagentaSpectralData(),
+            yellow = createYellowSpectralData(),
+            black = createBlackSpectralData(),
+            white = createWhiteSpectralData()
+        )
+    }
+    
+    /**
+     * Phthalocyanine Blue (Cyan) - absorbs red/yellow, reflects blue/green
+     */
+    private fun createCyanSpectralData(): SpectralData {
+        val k = STANDARD_WAVELENGTHS.map { wavelength ->
+            when {
+                wavelength < 500 -> 0.8f + (500 - wavelength) / 100f * 0.3f // Low absorption in blue
+                wavelength < 550 -> 0.8f + (wavelength - 500) / 50f * 2.5f // Rising absorption
+                else -> 3.3f + (wavelength - 550) / 150f * 12.0f // High absorption in red
+            }
+        }
+        val s = STANDARD_WAVELENGTHS.map { 2.0f } // Moderate scattering
+        return SpectralData(STANDARD_WAVELENGTHS, k, s)
+    }
+    
+    /**
+     * Quinacridone Magenta - absorbs green, reflects red/blue
+     */
+    private fun createMagentaSpectralData(): SpectralData {
+        val k = STANDARD_WAVELENGTHS.map { wavelength ->
+            when {
+                wavelength < 500 -> 1.2f + (500 - wavelength) / 100f * 0.5f // Low absorption in blue
+                wavelength < 600 -> 1.2f + (wavelength - 500) / 100f * 14.0f // High absorption in green
+                else -> 15.2f - (wavelength - 600) / 100f * 12.0f // Lower absorption in red
+            }
+        }
+        val s = STANDARD_WAVELENGTHS.map { 1.8f } // Slightly less scattering than cyan
+        return SpectralData(STANDARD_WAVELENGTHS, k, s)
+    }
+    
+    /**
+     * Cadmium Yellow - absorbs blue/violet, reflects yellow/red
+     */
+    private fun createYellowSpectralData(): SpectralData {
+        val k = STANDARD_WAVELENGTHS.map { wavelength ->
+            when {
+                wavelength < 500 -> 18.0f - (wavelength - 400) / 100f * 6.0f // Very high absorption in violet/blue
+                wavelength < 560 -> 12.0f - (wavelength - 500) / 60f * 10.5f // Dropping absorption
+                else -> 1.5f - (wavelength - 560) / 140f * 0.8f // Low absorption in yellow/red
+            }
+        }
+        val s = STANDARD_WAVELENGTHS.map { 1.5f } // Lower scattering
+        return SpectralData(STANDARD_WAVELENGTHS, k, s)
+    }
+    
+    /**
+     * Carbon Black - absorbs all wavelengths equally
+     */
+    private fun createBlackSpectralData(): SpectralData {
+        val k = STANDARD_WAVELENGTHS.map { 25.0f } // Very high, uniform absorption
+        val s = STANDARD_WAVELENGTHS.map { 0.5f } // Low scattering
+        return SpectralData(STANDARD_WAVELENGTHS, k, s)
+    }
+    
+    /**
+     * Titanium White - scatters all wavelengths, minimal absorption
+     */
+    private fun createWhiteSpectralData(): SpectralData {
+        val k = STANDARD_WAVELENGTHS.map { 0.05f } // Minimal absorption
+        val s = STANDARD_WAVELENGTHS.map { 15.0f } // Very high scattering
+        return SpectralData(STANDARD_WAVELENGTHS, k, s)
+    }
+    
+    /**
+     * Calculate paint mix ratios using Kubelka-Munk theory.
+     * 
+     * @param colorInt Target color (ARGB)
+     * @param database Spectral K/S data for all pigments
+     * @param maxIterations Maximum optimization iterations
+     * @param tolerance Convergence tolerance
+     * @return Optimized paint mix ratios
+     */
+    fun calculateMixRatios(
+        colorInt: Int,
+        database: KubelkaMunkPigmentDatabase,
+        maxIterations: Int = 50,
+        tolerance: Float = 0.001f
+    ): PaintMix {
+        // Convert target color to reflectance spectrum
+        val targetReflectance = rgbToReflectance(colorInt)
+        
+        // Initial guess: use simple RGB-based ratios as starting point
+        var mixRatios = initialGuessFromRGB(colorInt)
+        
+        // Optimize using gradient descent to minimize color difference
+        var bestMix = mixRatios
+        var bestError = calculateColorError(mixRatios, targetReflectance, database)
+        
+        for (iteration in 0 until maxIterations) {
+            // Try small adjustments to each component
+            val adjustments = listOf(
+                Adjustment(0.01f, 0f, 0f, 0f, 0f),
+                Adjustment(-0.01f, 0f, 0f, 0f, 0f),
+                Adjustment(0f, 0.01f, 0f, 0f, 0f),
+                Adjustment(0f, -0.01f, 0f, 0f, 0f),
+                Adjustment(0f, 0f, 0.01f, 0f, 0f),
+                Adjustment(0f, 0f, -0.01f, 0f, 0f),
+                Adjustment(0f, 0f, 0f, 0.01f, 0f),
+                Adjustment(0f, 0f, 0f, -0.01f, 0f),
+                Adjustment(0f, 0f, 0f, 0f, 0.01f),
+                Adjustment(0f, 0f, 0f, 0f, -0.01f)
+            )
+            
+            var improved = false
+            for (adj in adjustments) {
+                val testMix = normalizeMix(
+                    (mixRatios.cyan + adj.c).coerceAtLeast(0f),
+                    (mixRatios.magenta + adj.m).coerceAtLeast(0f),
+                    (mixRatios.yellow + adj.y).coerceAtLeast(0f),
+                    (mixRatios.black + adj.k).coerceAtLeast(0f),
+                    (mixRatios.white + adj.w).coerceAtLeast(0f)
+                )
+                
+                val error = calculateColorError(testMix, targetReflectance, database)
+                if (error < bestError - tolerance) {
+                    bestMix = testMix
+                    bestError = error
+                    improved = true
+                }
+            }
+            
+            if (!improved) break
+            mixRatios = bestMix
+        }
+        
+        return bestMix
+    }
+    
+    private data class Adjustment(val c: Float, val m: Float, val y: Float, val k: Float, val w: Float)
+    
+    /**
+     * Convert RGB color to approximate reflectance spectrum.
+     * 
+     * Important: High RGB values (bright colors) = HIGH reflectance in paint.
+     * This is different from RGB->CMY where it's inverted.
+     * 
+     * Pure blue (0, 0, 255) should have:
+     * - High reflectance at blue wavelengths (450-500nm)
+     * - Low reflectance at red/green wavelengths
+     */
+    private fun rgbToReflectance(colorInt: Int): List<Float> {
+        val r = Color.red(colorInt) / 255f
+        val g = Color.green(colorInt) / 255f
+        val b = Color.blue(colorInt) / 255f
+        
+        // Overall lightness affects all wavelengths (white reflects everything)
+        val lightness = (r + g + b) / 3f
+        
+        return STANDARD_WAVELENGTHS.map { wavelength ->
+            val baseReflectance = when {
+                // Blue region (400-500nm)
+                wavelength < 500 -> {
+                    val bluePeak = b * (1.0f - (500 - wavelength) / 100f * 0.3f)
+                    val greenSpill = if (wavelength > 470) g * ((wavelength - 470) / 30f) * 0.3f else 0f
+                    bluePeak + greenSpill
+                }
+                // Green region (500-580nm)
+                wavelength < 580 -> {
+                    val greenPeak = g * (1.0f - kotlin.math.abs(wavelength - 540f) / 40f * 0.4f)
+                    val blueSpill = if (wavelength < 520) b * ((520 - wavelength) / 20f) * 0.4f else 0f
+                    val redSpill = if (wavelength > 560) r * ((wavelength - 560) / 20f) * 0.3f else 0f
+                    greenPeak + blueSpill + redSpill
+                }
+                // Red region (580-700nm)
+                else -> {
+                    val redPeak = r * (0.7f + (wavelength - 580) / 120f * 0.3f)
+                    val greenSpill = if (wavelength < 620) g * ((620 - wavelength) / 40f) * 0.3f else 0f
+                    redPeak + greenSpill
+                }
+            }
+            
+            // Add baseline from overall lightness (paint needs white to be bright)
+            // TUNED: Reduced from 0.3f to 0.15f to avoid over-brightening
+            val whitenessBoost = lightness * 0.15f
+            (baseReflectance + whitenessBoost).coerceIn(0f, 1f)
+        }
+    }
+    
+    /**
+     * Calculate reflectance spectrum from paint mixture using Kubelka-Munk equations.
+     */
+    fun calculateReflectance(
+        mix: PaintMix,
+        database: KubelkaMunkPigmentDatabase
+    ): List<Float> {
+        return STANDARD_WAVELENGTHS.indices.map { i ->
+            // Sum K and S values weighted by concentrations
+            val k = mix.cyan * database.cyan.kValues[i] +
+                    mix.magenta * database.magenta.kValues[i] +
+                    mix.yellow * database.yellow.kValues[i] +
+                    mix.black * database.black.kValues[i] +
+                    mix.white * database.white.kValues[i]
+            
+            val s = mix.cyan * database.cyan.sValues[i] +
+                    mix.magenta * database.magenta.sValues[i] +
+                    mix.yellow * database.yellow.sValues[i] +
+                    mix.black * database.black.sValues[i] +
+                    mix.white * database.white.sValues[i]
+            
+            // Kubelka-Munk equation for reflectance
+            // R = 1 + (K/S) - sqrt((K/S)^2 + 2*(K/S))
+            if (s < 0.001f) {
+                0.0f // Avoid division by zero
+            } else {
+                val ks = k / s
+                val reflectance = 1f + ks - sqrt(ks * ks + 2f * ks)
+                reflectance.coerceIn(0f, 1f)
+            }
+        }
+    }
+    
+    /**
+     * Convert reflectance spectrum to RGB color.
+     */
+    fun reflectanceToRGB(reflectance: List<Float>): Int {
+        // Simplified CIE color matching - use weighted averages
+        var r = 0f
+        var g = 0f
+        var b = 0f
+        
+        reflectance.forEachIndexed { i, refl ->
+            val wavelength = STANDARD_WAVELENGTHS[i]
+            when {
+                wavelength < 500 -> b += refl * (500 - wavelength) / 100f
+                wavelength < 580 -> {
+                    g += refl * 1.2f
+                    if (wavelength < 520) b += refl * (520 - wavelength) / 20f * 0.5f
+                    if (wavelength > 560) r += refl * (wavelength - 560) / 20f * 0.3f
+                }
+                else -> r += refl * (1.0f + (wavelength - 580) / 120f)
+            }
+        }
+        
+        // Normalize
+        val maxVal = maxOf(r, g, b, 1f)
+        r = (r / maxVal * 255f).coerceIn(0f, 255f)
+        g = (g / maxVal * 255f).coerceIn(0f, 255f)
+        b = (b / maxVal * 255f).coerceIn(0f, 255f)
+        
+        return Color.rgb(r.toInt(), g.toInt(), b.toInt())
+    }
+    
+    /**
+     * Calculate color error between target and mixed reflectance.
+     */
+    private fun calculateColorError(
+        mix: PaintMix,
+        targetReflectance: List<Float>,
+        database: KubelkaMunkPigmentDatabase
+    ): Float {
+        val mixedReflectance = calculateReflectance(mix, database)
+        
+        // Calculate mean squared error
+        return targetReflectance.zip(mixedReflectance) { target, mixed ->
+            (target - mixed).pow(2)
+        }.average().toFloat()
+    }
+    
+    /**
+     * Initial guess based on RGB conversion with proper white handling.
+     * 
+     * Key insight: In subtractive mixing, bright saturated colors need WHITE.
+     * - Pure blue (0, 0, 255) = Cyan + White (NOT just cyan)
+     * - Dark blue (0, 0, 128) = Cyan + Black
+     * - Navy (0, 0, 64) = Cyan + lots of Black
+     */
+    private fun initialGuessFromRGB(colorInt: Int): PaintMix {
+        val r = Color.red(colorInt) / 255f
+        val g = Color.green(colorInt) / 255f
+        val b = Color.blue(colorInt) / 255f
+        
+        // Calculate overall brightness and saturation
+        val maxChannel = maxOf(r, g, b)
+        val minChannel = minOf(r, g, b)
+        val lightness = (maxChannel + minChannel) / 2f
+        val saturation = if (maxChannel > 0f) (maxChannel - minChannel) / maxChannel else 0f
+        
+        // Calculate CMY components (inverse of RGB)
+        val cBase = 1f - r
+        val mBase = 1f - g
+        val yBase = 1f - b
+        
+        // BLACK: Use for darkening (low lightness)
+        // More black when the color is dark overall
+        val k = if (lightness < 0.3f) {
+            (0.3f - lightness) * 2f  // Scale up black for very dark colors
+        } else {
+            0f
+        }
+        
+        // WHITE: Critical for bright saturated colors!
+        // In paint, you NEED white to get bright colors
+        // The brighter the target, the more white needed
+        // 
+        // TUNED: Reduced from aggressive scaling to more realistic values
+        val w = when {
+            // Very bright colors (RGB > 230) need significant white
+            maxChannel > 0.9f -> (maxChannel - 0.9f) * 3.0f  // Maps 0.9-1.0 to 0-0.3 white
+            // Bright colors (RGB > 200) need moderate white  
+            maxChannel > 0.78f -> (maxChannel - 0.78f) * 2.0f  // Maps 0.78-0.9 to 0-0.24 white
+            // Medium brightness needs some white
+            maxChannel > 0.6f -> (maxChannel - 0.6f) * 1.0f  // Maps 0.6-0.78 to 0-0.18 white
+            // Darker colors need minimal white
+            else -> 0f
+        }
+        
+        // CMY: Calculate based on color components, reduced by black and white
+        val c = (cBase * (1f - k) * (1f - w * 0.5f)).coerceAtLeast(0f)
+        val m = (mBase * (1f - k) * (1f - w * 0.5f)).coerceAtLeast(0f)
+        val y = (yBase * (1f - k) * (1f - w * 0.5f)).coerceAtLeast(0f)
+        
+        return normalizeMix(c, m, y, k, w)
+    }
+    
+    /**
+     * Normalize mix ratios to sum to 1.0
+     */
+    private fun normalizeMix(c: Float, m: Float, y: Float, k: Float, w: Float): PaintMix {
+        val total = c + m + y + k + w
+        return if (total > 0.0001f) {
+            PaintMix(c / total, m / total, y / total, k / total, w / total)
+        } else {
+            PaintMix(0f, 0f, 0f, 0f, 1f)
+        }
+    }
+    
+    /**
+     * Scale K and S values by pigment strength factors.
+     * Higher strength = more absorption/scattering per unit.
+     */
+    fun scalePigmentDatabase(
+        database: KubelkaMunkPigmentDatabase,
+        strengths: PigmentStrengths
+    ): KubelkaMunkPigmentDatabase {
+        return KubelkaMunkPigmentDatabase(
+            cyan = scaleSpectralData(database.cyan, strengths.cyan),
+            magenta = scaleSpectralData(database.magenta, strengths.magenta),
+            yellow = scaleSpectralData(database.yellow, strengths.yellow),
+            black = scaleSpectralData(database.black, strengths.black),
+            white = scaleSpectralData(database.white, strengths.white)
+        )
+    }
+    
+    private fun scaleSpectralData(data: SpectralData, strength: Float): SpectralData {
+        return SpectralData(
+            wavelengths = data.wavelengths,
+            kValues = data.kValues.map { it * strength },
+            sValues = data.sValues.map { it * strength }
+        )
+    }
+}
