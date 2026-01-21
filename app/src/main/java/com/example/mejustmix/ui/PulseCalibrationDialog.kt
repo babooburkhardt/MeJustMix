@@ -153,7 +153,7 @@ fun PulseCalibrationDialog(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Column {
-                        Text("Pulse Calibration", style = MaterialTheme.typography.titleLarge)
+                        Text("Pump Homing", style = MaterialTheme.typography.titleLarge)
                         Text(pump.name, style = MaterialTheme.typography.bodyMedium, color = Color.Gray)
                     }
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -180,14 +180,14 @@ fun PulseCalibrationDialog(
                     containerColor = MaterialTheme.colorScheme.tertiaryContainer.copy(alpha = 0.2f)
                 )) {
                     Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                        Text("Motor Configuration:", style = MaterialTheme.typography.labelMedium)
+                        Text("Pump Homing:", style = MaterialTheme.typography.labelMedium)
                         Text(
-                            "1.8° motor, 1:4 gear, 3 rollers",
+                            "Align pump rollers to home position before dispensing",
                             style = MaterialTheme.typography.bodySmall,
                             color = Color.Gray
                         )
                         Text(
-                            "= ${stepsPerPulse.toInt()} steps/pulse",
+                            "1.8° motor, 1:4 gear, 3 rollers = ${stepsPerPulse.toInt()} steps/pulse",
                             fontWeight = FontWeight.Bold,
                             color = MaterialTheme.colorScheme.primary
                         )
@@ -797,7 +797,12 @@ fun PulseModeSettingsCard(
                 
                 HorizontalDivider()
                 
-                Text("Pump Calibration:", style = MaterialTheme.typography.labelMedium)
+                Text("Pump Homing:", style = MaterialTheme.typography.labelMedium)
+                Text(
+                    "Align rollers to home position before dispensing",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = Color.Gray
+                )
                 pumps.forEachIndexed { index, pump ->
                     Row(
                         modifier = Modifier.fillMaxWidth(),
@@ -813,7 +818,9 @@ fun PulseModeSettingsCard(
                             )
                         }
                         TextButton(onClick = { onCalibratePump(index) }) {
-                            Text("Calibrate")
+                            Icon(Icons.Default.Home, null, modifier = Modifier.size(18.dp))
+                            Spacer(Modifier.width(4.dp))
+                            Text("Home")
                         }
                     }
                 }
