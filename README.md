@@ -10,7 +10,7 @@ _# MeJustMix
 For the STLs, and motor mounts, head over to the project page:
 👉 **[MeJustMix on Printables](https://www.printables.com/model/1563458-mejustmix)**
 
-## Assembly guide is currently AI generated. and only handles all the electrical side. as it cannot understand STLs. im working on it myself, so treat the scurrent guide as something to fill the gap while i find spare time to work on it
+## Assembly guide is currently AI generated. and only handles all the electrical side. as it cannot understand STLs. im working on it myself, so treat the current guide as something to fill the gap while i find spare time to work on it
 
 ### Bill of Materials (BOM)     ..if i forgot something i apologize.. still a WIP
 To build the full 5-pump mixer, you will need:
