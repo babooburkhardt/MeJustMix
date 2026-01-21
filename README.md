@@ -15,6 +15,7 @@ To build the full 5-pump mixer, you will need:
 
 **Electronics & Motors**
 * **1x** MKS TinyBee (Motherboard)
+* **5x** TMC2209 stepper driver (or any other stepper driver, its just these are silent by default with our setup, so no stepper noise everytime you make paint)
 * **1x** 24v 5a power supply
 * **5x** Nema 17 Stepper Motors (Standard size, **do not** use pancake motors)
 * **5x** Compact Planetary Gear for Nema17 (4:1 ratio) - *See Credits below or description of MeJustMix on printables* 
