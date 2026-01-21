@@ -31,6 +31,10 @@ import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.foundation.Canvas
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.mejustmix.ui.theme.getBrightness
 import kotlin.math.roundToInt
@@ -40,7 +44,8 @@ import kotlin.math.roundToInt
 fun VisualizerCard(
     mixViewModel: MixViewModel, 
     fillHeight: Boolean = false,
-    settingsViewModel: SettingsViewModel = viewModel()
+    settingsViewModel: SettingsViewModel = viewModel(),
+    onImportSpectralData: () -> Unit = {}
 ) {
     val color by mixViewModel.color.collectAsState()
     // OPTION A: Using the K-M predicted color (Physics Engine)
@@ -157,10 +162,11 @@ fun VisualizerCard(
                     settingsState = settingsState,
                     onTriggerScan = { settingsViewModel.triggerSpectralScan() },
                     onSetTarget = { data -> 
-                        if (mixViewModel.setTargetColorFromSpectral(data)) {
-                           selectedTab = 0 // Go back to Wheel/Preview
-                        }
+                        mixViewModel.setTargetColorFromSpectral(data)
+                        selectedTab = 0 // Go back to Wheel/Preview
                     },
+                    onExportData = { settingsViewModel.exportSpectralData() },
+                    onImportData = onImportSpectralData,
                     modifier = pickerModifier
                 )
             }
@@ -247,8 +253,12 @@ fun SensorColorPicker(
     settingsState: SettingsUiState,
     onTriggerScan: () -> Unit,
     onSetTarget: (List<Float>) -> Unit,
+    onExportData: () -> Unit,
+    onImportData: () -> Unit,
     modifier: Modifier
 ) {
+    var showSpectralGraph by remember { mutableStateOf(false) }
+    
     Column(
         modifier = modifier
             .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha=0.3f), RoundedCornerShape(16.dp))
@@ -265,7 +275,17 @@ fun SensorColorPicker(
             color = if(settingsState.spectralConnectionStatus.contains("Connected")) Color(0xFF4CAF50) else Color.Gray
         )
         
-        Spacer(modifier = Modifier.height(24.dp))
+        Spacer(modifier = Modifier.height(16.dp))
+        
+        // Import Button (for users without sensor)
+        OutlinedButton(
+            onClick = onImportData,
+            modifier = Modifier.fillMaxWidth(0.8f)
+        ) {
+            Text("Import Scan from File")
+        }
+        
+        Spacer(modifier = Modifier.height(8.dp))
         
         // Scan Button
         Button(
@@ -294,11 +314,35 @@ fun SensorColorPicker(
                              .border(2.dp, Color.Gray, RoundedCornerShape(12.dp))
                      )
                      Spacer(modifier = Modifier.height(16.dp))
-                     Button(
-                         onClick = { onSetTarget(settingsState.spectralData) },
-                         colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.tertiary)
-                     ) {
-                         Text("Set as Target Color")
+                     
+                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                         Button(
+                             onClick = { onSetTarget(settingsState.spectralData) },
+                             colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.tertiary)
+                         ) {
+                             Text("Set as Target")
+                         }
+                         
+                         OutlinedButton(onClick = onExportData) {
+                             Text("Export CSV")
+                         }
+                     }
+                     
+                     Spacer(modifier = Modifier.height(12.dp))
+                     
+                     // Debug: Spectral Graph Toggle
+                     TextButton(onClick = { showSpectralGraph = !showSpectralGraph }) {
+                         Text(
+                             if (showSpectralGraph) "Hide Spectral Graph ▲" else "Show Spectral Graph ▼",
+                             style = MaterialTheme.typography.bodySmall
+                         )
+                     }
+                     
+                     if (showSpectralGraph) {
+                         SpectralGraph(
+                             data = settingsState.spectralData,
+                             modifier = Modifier.fillMaxWidth().height(150.dp).padding(top = 8.dp)
+                         )
                      }
                  }
             } else {
@@ -315,6 +359,73 @@ fun SensorColorPicker(
             }
         } else {
             Text("No Data Scanned", style = MaterialTheme.typography.bodySmall, color = Color.Gray)
+        }
+    }
+}
+
+@Composable
+fun SpectralGraph(data: List<Float>, modifier: Modifier = Modifier) {
+    // AS7265x wavelengths in nm
+    val wavelengths = listOf(410, 435, 460, 485, 510, 535, 560, 585, 610, 645, 680, 705, 730, 760, 810, 860, 900, 940)
+    
+    // Extract colors in Composable context
+    val surfaceColor = MaterialTheme.colorScheme.surface
+    val primaryColor = MaterialTheme.colorScheme.primary
+    
+    Canvas(modifier = modifier
+        .background(surfaceColor, RoundedCornerShape(8.dp))
+        .border(1.dp, Color.Gray, RoundedCornerShape(8.dp))
+        .padding(16.dp)
+    ) {
+        val maxValue = data.maxOrNull() ?: 1f
+        val minValue = data.minOrNull() ?: 0f
+        val range = maxValue - minValue
+        
+        if (range == 0f || data.size != 18) return@Canvas
+        
+        val width = size.width
+        val height = size.height
+        val stepX = width / (data.size - 1).toFloat()
+        
+        // Draw grid lines
+        for (i in 0..4) {
+            val y = height * i.toFloat() / 4f
+            drawLine(
+                color = Color.Gray.copy(alpha = 0.2f),
+                start = Offset(0f, y),
+                end = Offset(width, y),
+                strokeWidth = 1f
+            )
+        }
+        
+        // Draw spectral curve
+        val path = Path()
+        data.forEachIndexed { index, value ->
+            val x = index.toFloat() * stepX
+            val y = height - ((value - minValue) / range * height)
+            
+            if (index == 0) {
+                path.moveTo(x, y)
+            } else {
+                path.lineTo(x, y)
+            }
+        }
+        
+        drawPath(
+            path = path,
+            color = primaryColor,
+            style = Stroke(width = 3f)
+        )
+        
+        // Draw data points
+        data.forEachIndexed { index, value ->
+            val x = index.toFloat() * stepX
+            val y = height - ((value - minValue) / range * height)
+            drawCircle(
+                color = primaryColor,
+                radius = 4f,
+                center = Offset(x, y)
+            )
         }
     }
 }

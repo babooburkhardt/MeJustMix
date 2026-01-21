@@ -22,6 +22,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.lifecycle.viewmodel.compose.viewModel
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -43,6 +45,13 @@ fun MainScreen() {
     var showHistory by rememberSaveable { mutableStateOf(false) }
     var showSettingsDialog by rememberSaveable { mutableStateOf(false) }
     var showSinglePumpDialogIndex by rememberSaveable { mutableStateOf<Int?>(null) }
+    
+    // Spectral Data Import Launcher
+    val spectralImportLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenDocument()
+    ) { uri ->
+        uri?.let { settingsViewModel.importSpectralData(it) }
+    }
     
     val snackbarHostState = remember { SnackbarHostState() }
     
@@ -120,7 +129,11 @@ fun MainScreen() {
 
     val visualizerContent = remember(mixViewModel) {
         movableContentOf<Boolean> { fillHeight ->
-            VisualizerCard(mixViewModel = mixViewModel, fillHeight = fillHeight)
+            VisualizerCard(
+                mixViewModel = mixViewModel, 
+                fillHeight = fillHeight,
+                onImportSpectralData = { spectralImportLauncher.launch(arrayOf("text/csv", "text/comma-separated-values", "*/*")) }
+            )
         }
     }
 

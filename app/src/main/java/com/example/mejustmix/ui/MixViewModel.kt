@@ -1,5 +1,8 @@
 package com.example.mejustmix.ui
 
+import androidx.annotation.OptIn
+import kotlinx.coroutines.FlowPreview
+
 import android.app.Application
 import android.net.Uri
 import androidx.compose.runtime.mutableStateOf
@@ -19,9 +22,7 @@ import com.example.mejustmix.data.HistoryItem
 import com.example.mejustmix.data.PaintMix
 import com.example.mejustmix.services.BackupService
 import com.example.mejustmix.services.ColorMixingService
-import com.example.mejustmix.services.FluidNCService
 import com.example.mejustmix.services.FluidNCStatus
-import com.example.mejustmix.services.GCodeGenerator
 import com.example.mejustmix.services.KubelkaMunkColorMixing
 import com.example.mejustmix.ui.SettingsUiState 
 import kotlinx.coroutines.Dispatchers
@@ -31,9 +32,10 @@ import kotlinx.coroutines.launch
 import java.util.UUID
 import kotlin.math.sqrt
 
+@OptIn(FlowPreview::class)
 class MixViewModel @JvmOverloads constructor(
     application: Application,
-    private val settingsViewModel: SettingsViewModel
+    private val settingsViewModel: SettingsViewModel = SettingsViewModel(application)
 ) : AndroidViewModel(application) {
 
     companion object {
@@ -106,28 +108,29 @@ class MixViewModel @JvmOverloads constructor(
 
     private val _lastUsedFolderName = MutableStateFlow<String?>(null)
     val lastUsedFolderName = _lastUsedFolderName.asStateFlow()
-
-    private val libraryRepository = LibraryRepository(getApplication())
-    private val photoLibraryRepository = PhotoLibraryRepository(getApplication())
-
-    private var fluidNCService: FluidNCService? = null
-
+    
+    // --- Restored State ---
     private val _gcodeHistory = MutableStateFlow<List<String>>(emptyList())
+    // Expose as StateFlow if needed by UI, or just keep private if only debugging
     val gcodeHistory = _gcodeHistory.asStateFlow()
 
     private val _pumpDepletionWarning = MutableStateFlow<String?>(null)
     val pumpDepletionWarning = _pumpDepletionWarning.asStateFlow()
-
+    
     private val _isSending = MutableStateFlow(false)
     val isSending = _isSending.asStateFlow()
 
-    private val colorHistory = mutableListOf<Color>()
-    private var historyIndex = -1
-
+    // Manual Mode State
     val manualBaseName = mutableStateOf<String?>(null)
     val manualTransparency = mutableStateOf(0f)
     val includeWhitePump = mutableStateOf(true)
 
+    private val libraryRepository = LibraryRepository(getApplication())
+    private val photoLibraryRepository = PhotoLibraryRepository(getApplication())
+
+    // --- REPOSITORY ---
+    private val printerRepository = com.example.mejustmix.data.PrinterRepository(application)
+    
     init {
         // Sync retraction from settings
         settingsViewModel.uiState
@@ -141,15 +144,27 @@ class MixViewModel @JvmOverloads constructor(
             .map { it.ipAddress }
             .distinctUntilChanged()
             .debounce(IP_DEBOUNCE_MS)
-            .onEach { ip -> reconnectFluidNCService(ip) }
+            .onEach { ip -> printerRepository.connect(ip) }
             .launchIn(viewModelScope)
 
         // CRITICAL UPDATE: Watch for Pigment Database or Strength changes
-        // This ensures the preview updates instantly if you change settings/code
         settingsViewModel.uiState
             .map { Triple(it.pigmentStrengths, it.useKubelkaMunk, it.kmDatabase) }
-            .distinctUntilChanged { old, new -> old == new } // Only trigger if these specific fields change
+            .distinctUntilChanged { old, new -> old == new }
             .onEach { calculateMix() }
+            .launchIn(viewModelScope)
+
+        // Observe Printer Status
+        printerRepository.connectionStatus
+            .onEach { status -> updateConnectionStatus(status) }
+            .launchIn(viewModelScope)
+            
+        printerRepository.gcodeHistory
+            .onEach { history -> _gcodeHistory.value = history }
+            .launchIn(viewModelScope)
+            
+        printerRepository.isSending
+            .onEach { sending -> _isSending.value = sending }
             .launchIn(viewModelScope)
 
         viewModelScope.launch {
@@ -160,52 +175,93 @@ class MixViewModel @JvmOverloads constructor(
         // Initial Calculation
         calculateMix()
     }
-
-    // --- CORE CALCULATION (OPTION A IMPLEMENTATION) ---
-
-    private fun calculateMix() {
-        val settings = settingsViewModel.uiState.value
-        
-        // 1. Calculate the mix ratios
-        val newMix = ColorMixingService.calculateMixRatios(
-            colorInt = _color.value.toArgb(), 
-            strengths = settings.pigmentStrengths,
-            useKubelkaMunk = settings.useKubelkaMunk
-        )
-        
-        if (newMix != _paintMix.value) {
-            _paintMix.value = newMix
-        }
-        
-        // 2. PREDICT THE REALITY (Physics Engine)
-        // This calculates exactly what the paint will look like based on K/S values.
-        // It bypasses the "Fake" Simulator entirely.
-        
-        val database = settings.kmDatabase ?: KubelkaMunkColorMixing.createDefaultPigmentDatabase()
-        val predictedRgbInt = KubelkaMunkColorMixing.previewMixedColor(newMix, database)
-        
-        _predictedColor.value = Color(predictedRgbInt)
-    }
-
-    // --- HELPER FUNCTIONS ---
-
-    fun updateConnectionStatus(status: FluidNCStatus) {
-        _fluidNCStatus.value = status
-    }
-
-    fun addToTerminalHistory(message: String) {
-        _gcodeHistory.update { it + message }
-    }
-
-    // --- Sorting Actions ---
     
+    fun setColor(newColor: Color) {
+        if (_color.value != newColor) {
+            // Save current state to undo stack before changing
+            val currentState = HistoryItem(_color.value, _paintMix.value)
+            undoStack.push(currentState)
+            if (undoStack.size > MAX_HISTORY_SIZE) {
+                undoStack.removeAt(0) // Remove oldest
+            }
+            redoStack.clear() // Clear redo stack on new action
+            
+            _color.value = newColor
+            calculateMix()
+            checkGamut(newColor)
+        }
+    }
+
+    fun setBrightness(level: Float) {
+        val current = _color.value
+        val hsl = FloatArray(3)
+        ColorUtils.colorToHSL(current.toArgb(), hsl)
+        hsl[2] = level.coerceIn(0f, 1f)
+        setColor(Color(ColorUtils.HSLToColor(hsl)))
+    }
+    
+    fun setTotalVolume(volume: Float) {
+        _totalVolume.value = volume.coerceIn(0.1f, 100f)
+    }
+
+    fun calculateMix() {
+         viewModelScope.launch(Dispatchers.Default) {
+             val currentColor = _color.value
+             val uiState = settingsViewModel.uiState.value
+             val strengths = uiState.pigmentStrengths
+             val useKM = uiState.useKubelkaMunk
+             
+             // Calculate Mix
+             val mix = ColorMixingService.calculateMixRatios(
+                 currentColor.toArgb(),
+                 strengths,
+                 useKM
+             )
+             _paintMix.value = mix
+             
+             // Update Preview
+             val predictedInt = ColorMixingService.previewMixedColor(mix, useKM)
+             _predictedColor.value = Color(predictedInt)
+         }
+    }
+    
+    fun setTargetColorFromSpectral(spectralData: List<Float>) {
+        viewModelScope.launch(Dispatchers.Default) {
+            val whiteRef = settingsViewModel.uiState.value.whiteReference
+            if (whiteRef != null) {
+                val rgbInt = KubelkaMunkColorMixing.calculateRGBFromSpectral(spectralData, whiteRef)
+                setColor(Color(rgbInt))
+            }
+        }
+    }
+
+    fun checkGamut(color: Color) {
+        // Simple check: if saturation is very high, it might be out of gamut for CMYK
+        // Real implementation would compare against pigment max chroma
+        val hsl = FloatArray(3)
+        ColorUtils.colorToHSL(color.toArgb(), hsl)
+        _isOutOfGamut.value = hsl[1] > 0.95f && hsl[2] in 0.2f..0.8f
+    }
+    
+    private fun getHue(color: Color): Float {
+        val hsl = FloatArray(3)
+        ColorUtils.colorToHSL(color.toArgb(), hsl)
+        return hsl[0]
+    }
+    
+    private fun saveLibrary() {
+         viewModelScope.launch {
+             libraryRepository.saveLibrary(_libraryRaw.value)
+         }
+    }
+
     fun setFolderSort(folderId: String, sortOption: SortOption) {
         _libraryRaw.update { lib ->
             lib.map { if (it.id == folderId) it.copy(sortOption = sortOption) else it }
         }
         saveLibrary()
     }
-
+    
     fun setPhotoFolderSort(folderId: String, sortOption: SortOption) {
         _photoLibraryRaw.update { lib ->
             lib.map { if (it.id == folderId) it.copy(sortOption = sortOption) else it }
@@ -213,178 +269,67 @@ class MixViewModel @JvmOverloads constructor(
         savePhotoLibrary()
     }
 
-    private fun getHue(color: Color): Float {
-        val hsv = FloatArray(3)
-        android.graphics.Color.colorToHSV(color.toArgb(), hsv)
-        return hsv[0]
-    }
-
-    private fun reconnectFluidNCService(ipAddress: String) {
-        viewModelScope.launch {
-            fluidNCService?.disconnect()
-            delay(RECONNECT_DELAY_MS)
-            
-            fluidNCService = FluidNCService(
-                context = getApplication(),
-                onStatusChange = { status -> updateConnectionStatus(status) },
-                onGCodeSent = { gcode -> addToTerminalHistory(">> $gcode") }
-            )
-            
-            fluidNCService?.connect(ipAddress, 23)
-        }
-    }
-
-    override fun onCleared() {
-        fluidNCService?.disconnect()
-        super.onCleared()
-    }
-
-    private fun saveLibrary() {
-        viewModelScope.launch {
-            libraryRepository.saveLibrary(_libraryRaw.value)
-        }
-    }
-
-    fun setRetraction(value: Float) { _retraction.value = value }
-
-    fun setColor(color: Color) { updateColor(color) }
-
-    fun setTargetColorFromSpectral(spectralData: List<Float>): Boolean {
-        val whiteRef = settingsViewModel.uiState.value.whiteReference
-        if (whiteRef == null || whiteRef.size != 18 || spectralData.size != 18) {
-            return false
-        }
-        val rgbInt = KubelkaMunkColorMixing.calculateRGBFromSpectral(spectralData, whiteRef)
-        setColor(Color(rgbInt))
-        return true
-    }
-
-    fun setBrightness(brightness: Float) {
-        val hsv = FloatArray(3)
-        android.graphics.Color.colorToHSV(_color.value.toArgb(), hsv)
-        hsv[2] = brightness
-        updateColor(Color(android.graphics.Color.HSVToColor(hsv)))
-    }
-
-    private fun checkGamut(color: Color) {
-        val hsv = FloatArray(3)
-        android.graphics.Color.colorToHSV(color.toArgb(), hsv)
-        val hue = hsv[0]
-        val saturation = hsv[1]
-        
-        val luminance = ColorUtils.calculateLuminance(color.toArgb()).toFloat()
-        val peakLuminance = getPeakLuminanceForHue(hue)
-        val isSafeZone = luminance <= peakLuminance
-
-        val maxPermissibleSat = if (isSafeZone) {
-            1.0f 
-        } else {
-            val range = 1.0f - peakLuminance
-            if (range > 0f) {
-                val progress = (luminance - peakLuminance) / range
-                (1.0f - progress) * 1.15f
-            } else {
-                0f
-            }
-        }
-
-        _isOutOfGamut.value = (saturation > 0.15f) && (saturation > maxPermissibleSat)
-    }
-
-    private fun getPeakLuminanceForHue(hue: Float): Float {
-        return when {
-            hue < 60 -> lerp(0.25f, 0.92f, hue / 60f)          
-            hue < 120 -> lerp(0.92f, 0.35f, (hue - 60) / 60f)  
-            hue < 180 -> lerp(0.35f, 0.30f, (hue - 120) / 60f) 
-            hue < 240 -> lerp(0.30f, 0.15f, (hue - 180) / 60f) 
-            hue < 300 -> lerp(0.15f, 0.30f, (hue - 240) / 60f) 
-            else -> lerp(0.30f, 0.25f, (hue - 300) / 60f)      
-        }
-    }
-
-    private fun lerp(a: Float, b: Float, t: Float): Float {
-        return a + t * (b - a)
-    }
-
-    fun updateColor(newColor: Color) {
-        val currentStateColor = _color.value
-        val dist = sqrt(
-            (newColor.red - currentStateColor.red).let { it * it } +
-            (newColor.green - currentStateColor.green).let { it * it } +
-            (newColor.blue - currentStateColor.blue).let { it * it }
-        )
-        
-        if (dist < COLOR_CHANGE_THRESHOLD) return
-        
-        if (historyIndex < colorHistory.size - 1) {
-            colorHistory.subList(historyIndex + 1, colorHistory.size).clear()
-        }
-        colorHistory.add(newColor)
-        historyIndex = colorHistory.size - 1
-        
-        if (colorHistory.size > 50) {
-            colorHistory.removeAt(0)
-            historyIndex--
-        }
-        
-        _color.value = newColor
-        checkGamut(newColor)
-        calculateMix()
-    }
+    private val undoStack = java.util.Stack<HistoryItem>()
+    private val redoStack = java.util.Stack<HistoryItem>()
 
     fun undo() {
-        if (historyIndex > 0) {
-            historyIndex--
-            _color.value = colorHistory[historyIndex]
-            checkGamut(colorHistory[historyIndex])
-            calculateMix()
+        if (undoStack.isNotEmpty()) {
+            val current = HistoryItem(_color.value, _paintMix.value)
+            redoStack.push(current)
+            restoreFromHistory(undoStack.pop())
         }
     }
 
     fun redo() {
-        if (historyIndex < colorHistory.size - 1) {
-            historyIndex++
-            _color.value = colorHistory[historyIndex]
-            checkGamut(colorHistory[historyIndex])
-            calculateMix()
+        if (redoStack.isNotEmpty()) {
+            val current = HistoryItem(_color.value, _paintMix.value)
+            undoStack.push(current)
+            restoreFromHistory(redoStack.pop())
         }
     }
 
-    fun canUndo(): Boolean = historyIndex > 0
-    fun canRedo(): Boolean = historyIndex < colorHistory.size - 1
+    fun isMixPossible(volumeToCheck: Float = _totalVolume.value): Boolean {
+        // Basic Check: Is fluidNC connected OR "Bypass" enabled?
+        // AND total volume > 0
+        // AND not currently sending
+        val status = _fluidNCStatus.value?.state
+        // Valid FluidNC states: "Connected", "Idle", "Run", "Jog", "Hold"
+        val connected = status == "Idle" || 
+                       status == "Connected" ||
+                       status == "Run" ||
+                       settingsViewModel.uiState.value.bypassConnectionCheck
+                       
+        return connected && volumeToCheck > 0f && !_isSending.value
+    }
 
-    fun setTotalVolume(volume: Float) { _totalVolume.value = volume }
+    fun updateConnectionStatus(status: FluidNCStatus?) {
+        _fluidNCStatus.value = status
+    }
 
-    fun isMixPossible(volume: Float): Boolean {
-        val settings = settingsViewModel.uiState.value
-        return settings.pumps.size >= 5 &&
-            _paintMix.value.cyan * volume <= settings.pumps[0].currentVolumeMl &&
-            _paintMix.value.magenta * volume <= settings.pumps[1].currentVolumeMl &&
-            _paintMix.value.yellow * volume <= settings.pumps[2].currentVolumeMl &&
-            _paintMix.value.black * volume <= settings.pumps[3].currentVolumeMl &&
-            _paintMix.value.white * volume <= settings.pumps[4].currentVolumeMl
+    fun addToTerminalHistory(message: String) {
+        printerRepository.addToHistory(message)
+    }
+    
+    fun setRetraction(steps: Float) {
+        _retraction.value = steps
+    }
+
+    private fun reconnectFluidNCService(ipAddress: String) {
+        printerRepository.connect(ipAddress)
+    }
+
+    override fun onCleared() {
+        printerRepository.disconnect()
+        super.onCleared()
     }
 
     fun sendMix() {
         viewModelScope.launch(Dispatchers.Default) {
-            _isSending.value = true
-            
             try {
                 addToTerminalHistory(">> DEBUG: Dispense Button Clicked")
     
                 val settings = settingsViewModel.uiState.value
-                val currentStatus = _fluidNCStatus.value
                 
-                if (!settings.bypassConnectionCheck) {
-                    val validStates = listOf("Connected", "Idle", "Run", "Jog", "Hold")
-                    if (currentStatus == null || currentStatus.state !in validStates) {
-                        val msg = "Cannot dispense: Not Connected (${currentStatus?.state})"
-                        addToTerminalHistory(">> DEBUG: $msg")
-                        _pumpDepletionWarning.value = msg
-                        return@launch
-                    }
-                }
-    
                 val isManualMode = manualBaseName.value != null || settings.useManualBase
                 val paintRatio = 1f - manualTransparency.value
                 val dispenseVolume = _totalVolume.value * paintRatio
@@ -407,81 +352,35 @@ class MixViewModel @JvmOverloads constructor(
                     _paintMix.value
                 }
     
-                val gcode: List<String>
-                var actualVolume = dispenseVolume
+                val result = printerRepository.dispenseMix(mixToSend, dispenseVolume, settings)
                 
-                if (settings.usePulseMode) {
-                    // Pulse mode - dispense in whole pulses
-                    val pulseResult = GCodeGenerator.generatePulseMixingScript(
-                        mix = mixToSend,
-                        totalVolumeMl = dispenseVolume,
-                        retractionSteps = _retraction.value,
-                        pumps = settings.pumps,
-                        flowRateMlPerSec = settings.flowRate.toFloatOrNull() ?: 2.0f,
-                        pulseMinimum = settings.pulseMinimum
-                    )
-                    gcode = pulseResult.commands
-                    actualVolume = pulseResult.actualVolumeMl
-                    
-                    // Log pulse info
-                    val pulseInfo = pulseResult.pulseCounts.entries
-                        .filter { it.value > 0 }
-                        .joinToString(", ") { "${it.key}:${it.value}" }
-                    addToTerminalHistory(">> PULSE MODE: $pulseInfo (${String.format("%.2f", actualVolume)} mL actual)")
-                    
-                    if (pulseResult.scaleFactor > 1f) {
-                        addToTerminalHistory(">> Scaled up ${String.format("%.1f", pulseResult.scaleFactor)}x to meet minimum pulses")
+                when (result) {
+                    is com.example.mejustmix.data.PrinterRepository.DispenseResult.Success -> {
+                        addToHistory(_paintMix.value, _color.value)
+                        settingsViewModel.consumePaint(
+                            mix = mixToSend, 
+                            totalVolume = result.actualVolume,
+                            onPumpDepleted = { pumpName ->
+                                _pumpDepletionWarning.value = "$pumpName is empty!"
+                            }
+                        )
                     }
-                } else {
-                    // Standard mL mode
-                    gcode = GCodeGenerator.generateMixingScript(
-                        mix = mixToSend,
-                        totalVolumeMl = dispenseVolume, 
-                        retractionSteps = _retraction.value,
-                        pumps = settings.pumps,
-                        flowRateMlPerSec = settings.flowRate.toFloatOrNull() ?: 2.0f,
-                        usePulseMode = false
-                    )
-                }
-                
-                if (gcode.isEmpty()) {
-                     _pumpDepletionWarning.value = "Error: Generated G-Code is empty."
-                     return@launch
-                }
-                
-                fluidNCService?.sendMultiple(gcode)
-                
-                addToHistory(_paintMix.value, _color.value)
-                settingsViewModel.consumePaint(
-                    mix = mixToSend, 
-                    totalVolume = actualVolume,  // Use actual volume (may differ in pulse mode)
-                    onPumpDepleted = { pumpName ->
-                        _pumpDepletionWarning.value = "$pumpName is empty!"
+                    is com.example.mejustmix.data.PrinterRepository.DispenseResult.Error -> {
+                         _pumpDepletionWarning.value = result.message
+                         addToTerminalHistory(">> Error: ${result.message}")
                     }
-                )
+                }
 
             } catch (e: Exception) {
-                val err = "Error generating G-code: ${e.message}"
+                val err = "Error in sendMix: ${e.message}"
                 addToTerminalHistory(">> DEBUG: $err")
                 e.printStackTrace()
-                _pumpDepletionWarning.value = err
-            } finally {
-                _isSending.value = false
             }
         }
     }
-
+    
     fun sendRawGCode(gcode: List<String>) {
-        viewModelScope.launch(Dispatchers.Default) {
-            _isSending.value = true
-            try {
-                fluidNCService?.sendMultiple(gcode)
-            } catch (e: Exception) {
-                addToTerminalHistory(">> Error sending G-code: ${e.message}")
-            } finally {
-                _isSending.value = false
-            }
-        }
+        printerRepository.sendRaw(gcode)
     }
 
     fun clearManualMode() {
@@ -489,180 +388,53 @@ class MixViewModel @JvmOverloads constructor(
         manualTransparency.value = 0f
         includeWhitePump.value = true
     }
-
+    
     fun primePump(axis: String, amount: Float) {
         viewModelScope.launch(Dispatchers.Default) {
-            _isSending.value = true
-            try {
-                val settings = settingsViewModel.uiState.value
-                val pump = settings.pumps.find { it.axis == axis }
-                val stepsPerMl = pump?.calibration?.toFloatOrNull() ?: 100f
-                val flowRate = settings.flowRate.toFloatOrNull() ?: 2.0f
-                
-                val primeGcode = GCodeGenerator.generatePrimeOnlyScript(
-                    axis = axis,
-                    volumeMl = amount,
-                    stepsPerMl = stepsPerMl,
-                    flowRateMlPerSec = flowRate
-                )
-                fluidNCService?.sendMultiple(primeGcode)
-            } catch (e: Exception) {
-                addToTerminalHistory(">> Error priming pump: ${e.message}")
-            } finally {
-                _isSending.value = false
-            }
+            val settings = settingsViewModel.uiState.value
+            printerRepository.primePump(axis, amount, settings)
         }
     }
-
+    
     fun retractAll() {
         viewModelScope.launch(Dispatchers.Default) {
-            _isSending.value = true
-            try {
-                val settings = settingsViewModel.uiState.value
-                val gcode = GCodeGenerator.generateRetractAllScript(
-                    pumps = settings.pumps,
-                    retractionSteps = _retraction.value,
-                    flowRateMlPerSec = settings.flowRate.toFloatOrNull() ?: 2.0f
-                )
-                fluidNCService?.sendMultiple(gcode)
-            } catch (e: Exception) {
-                addToTerminalHistory(">> Error retracting: ${e.message}")
-            } finally {
-                _isSending.value = false
-            }
+            val settings = settingsViewModel.uiState.value
+            printerRepository.retractAll(settings)
         }
     }
     
     // --- Pulse Mode Functions ---
     
-    /**
-     * Dispense a specific number of pulses for calibration.
-     */
     fun dispensePulses(pumpIndex: Int, pulseCount: Int, stepsPerPulse: Float) {
         viewModelScope.launch(Dispatchers.Default) {
-            _isSending.value = true
-            try {
-                val settings = settingsViewModel.uiState.value
-                val pump = settings.pumps[pumpIndex]
-                val flowRate = settings.flowRate.toFloatOrNull() ?: 2.0f
-                
-                // Create a temporary pump config with the test stepsPerPulse
-                val testPump = pump.copy(stepsPerPulse = stepsPerPulse)
-                
-                val gcode = GCodeGenerator.generatePulsePrimeScript(
-                    pump = testPump,
-                    pulseCount = pulseCount,
-                    flowRateMlPerSec = flowRate
-                )
-                
-                addToTerminalHistory(">> Dispensing $pulseCount pulses (${(pulseCount * stepsPerPulse).toInt()} steps)")
-                fluidNCService?.sendMultiple(gcode)
-            } catch (e: Exception) {
-                addToTerminalHistory(">> Error dispensing pulses: ${e.message}")
-            } finally {
-                _isSending.value = false
-            }
+            val settings = settingsViewModel.uiState.value
+            printerRepository.dispensePulses(pumpIndex, pulseCount, stepsPerPulse, settings)
         }
     }
     
-    /**
-     * Jog a pump by a specific number of steps (for visual homing alignment).
-     */
     fun jogPump(pumpIndex: Int, steps: Int, stepsPerPulse: Float) {
-        viewModelScope.launch(Dispatchers.Default) {
-            _isSending.value = true
-            try {
-                val settings = settingsViewModel.uiState.value
-                val pump = settings.pumps[pumpIndex]
-                val flowRate = settings.flowRate.toFloatOrNull() ?: 2.0f
-                
-                // Calculate feed rate from stepsPerPulse
-                val mlPerPulse = pump.mlPerPulse
-                val stepsPerMl = if (mlPerPulse > 0) stepsPerPulse / mlPerPulse else 100f
-                val feedRate = (flowRate * stepsPerMl * 60).toInt().coerceAtMost(12000)
-                
-                val direction = if (steps >= 0) "forward" else "backward"
-                addToTerminalHistory(">> Jogging ${pump.name} $direction ${kotlin.math.abs(steps)} steps")
-                
-                val gcode = listOf(
-                    "G92 ${pump.axis}0",
-                    "G91",
-                    "G1 ${pump.axis}$steps F$feedRate",
-                    "G90"
-                )
-                fluidNCService?.sendMultiple(gcode)
-            } catch (e: Exception) {
-                addToTerminalHistory(">> Error jogging pump: ${e.message}")
-            } finally {
-                _isSending.value = false
-            }
-        }
+         viewModelScope.launch(Dispatchers.Default) {
+             val settings = settingsViewModel.uiState.value
+             printerRepository.jogPump(pumpIndex, steps, settings)
+         }
     }
     
-    /**
-     * Home a single pump to its pulse boundary.
-     */
     fun homePump(pumpIndex: Int) {
         viewModelScope.launch(Dispatchers.Default) {
-            _isSending.value = true
-            try {
-                val settings = settingsViewModel.uiState.value
-                val pump = settings.pumps[pumpIndex]
-                val flowRate = settings.flowRate.toFloatOrNull() ?: 2.0f
-                
-                val (gcode, volumeDispensed) = GCodeGenerator.generatePulseHomeScript(
-                    pump = pump,
-                    flowRateMlPerSec = flowRate
-                )
-                
-                if (gcode.isNotEmpty()) {
-                    addToTerminalHistory(">> Homing ${pump.name} pump...")
-                    fluidNCService?.sendMultiple(gcode)
-                    settingsViewModel.setPumpHomed(pumpIndex)
-                    addToTerminalHistory(">> ${pump.name} homed (dispensed ${String.format("%.2f", volumeDispensed)} mL)")
-                } else {
-                    addToTerminalHistory(">> ${pump.name} already at home position")
-                }
-            } catch (e: Exception) {
-                addToTerminalHistory(">> Error homing pump: ${e.message}")
-            } finally {
-                _isSending.value = false
+            val settings = settingsViewModel.uiState.value
+            val volume = printerRepository.homePump(pumpIndex, settings)
+            if (volume > 0) {
+                 settingsViewModel.setPumpHomed(pumpIndex)
             }
         }
     }
     
-    /**
-     * Home all pumps to their pulse boundaries.
-     */
     fun homeAllPumps() {
         viewModelScope.launch(Dispatchers.Default) {
-            _isSending.value = true
-            try {
-                val settings = settingsViewModel.uiState.value
-                val flowRate = settings.flowRate.toFloatOrNull() ?: 2.0f
-                
-                val gcode = GCodeGenerator.generateAllPumpsHomeScript(
-                    pumps = settings.pumps,
-                    flowRateMlPerSec = flowRate
-                )
-                
-                if (gcode.size > 2) {  // More than just G91/G90
-                    addToTerminalHistory(">> Homing all pumps...")
-                    fluidNCService?.sendMultiple(gcode)
-                    
-                    // Mark all pumps as homed
-                    settings.pumps.indices.forEach { i ->
-                        settingsViewModel.setPumpHomed(i)
-                    }
-                    addToTerminalHistory(">> All pumps homed")
-                } else {
-                    addToTerminalHistory(">> All pumps already at home positions")
-                }
-            } catch (e: Exception) {
-                addToTerminalHistory(">> Error homing pumps: ${e.message}")
-            } finally {
-                _isSending.value = false
-            }
+             val settings = settingsViewModel.uiState.value
+             settings.pumps.indices.forEach { i ->
+                 homePump(i) // Sequential homing via reuse
+             }
         }
     }
 

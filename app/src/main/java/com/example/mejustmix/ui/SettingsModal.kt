@@ -118,6 +118,7 @@ fun SettingsModal(
     var calibrationChooserIndex by rememberSaveable { mutableStateOf<Int?>(null) }
     var showFlowCalibratorForIndex by rememberSaveable { mutableStateOf<Int?>(null) }
     var showKSCalibrationForColor by rememberSaveable { mutableStateOf<String?>(null) }
+    var showCalibrationWizardForColor by rememberSaveable { mutableStateOf<String?>(null) }
     var showPigmentTunerForColor by rememberSaveable { mutableStateOf<String?>(null) }
     var showRetractionCalibrator by rememberSaveable { mutableStateOf(false) }
     var showKubelkaMunkSettings by rememberSaveable { mutableStateOf(false) }
@@ -137,69 +138,11 @@ fun SettingsModal(
     ) { uri ->
         uri?.let { mixViewModel.importBackup(it) }
     }
-
-    // --- DIALOGS LOGIC (unchanged) ---
     
-    if (showPrimeDialogForAxis != null) {
-        PrimingDialog(
-            onDismissRequest = { showPrimeDialogForAxis = null },
-            onConfirm = { amount ->
-                showPrimeDialogForAxis?.let { axis -> mixViewModel.primePump(axis, amount) }
-                showPrimeDialogForAxis = null
-            }
-        )
-    }
-
-    if (showRefillDialogForIndex != null) {
-        val index = showRefillDialogForIndex!!
-        val pump = uiState.pumps[index]
-        RefillDialog(
-            pumpName = pump.name,
-            currentLevel = pump.currentVolumeMl,
-            onDismissRequest = { showRefillDialogForIndex = null },
-            onConfirm = { amount, isAdding ->
-                val newVolume = if (isAdding) pump.currentVolumeMl + amount else amount
-                settingsViewModel.updatePumpVolume(index, newVolume)
-                showRefillDialogForIndex = null
-            }
-        )
-    }
-    
-    if (showAxisSelectorForIndex != null) {
-        val index = showAxisSelectorForIndex!!
-        val pump = uiState.pumps[index]
-        val axes = listOf("X", "Y", "Z", "A", "B")
-        
-        AlertDialog(
-            onDismissRequest = { showAxisSelectorForIndex = null },
-            title = { Text("Select Axis for ${pump.name}") },
-            text = {
-                Column {
-                    axes.forEach { axis ->
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp)
-                        ) {
-                            RadioButton(
-                                selected = pump.axis == axis,
-                                onClick = {
-                                    settingsViewModel.onPumpAxisChanged(index, axis)
-                                    showAxisSelectorForIndex = null
-                                }
-                            )
-                            Text(
-                                text = "Axis $axis",
-                                style = MaterialTheme.typography.bodyLarge,
-                                modifier = Modifier.padding(start = 8.dp)
-                            )
-                        }
-                    }
-                }
-            },
-            confirmButton = {
-                TextButton(onClick = { showAxisSelectorForIndex = null }) { Text("Cancel") }
-            }
-        )
+    val spectralImportLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenDocument()
+    ) { uri ->
+        uri?.let { settingsViewModel.importSpectralData(it) }
     }
 
     if (calibrationChooserIndex != null) {
@@ -236,13 +179,21 @@ fun SettingsModal(
                                 Button(
                                     onClick = { 
                                         calibrationChooserIndex = null
-                                        showKSCalibrationForColor = pump.name
+                                        if (uiState.spectralSensorEnabled) {
+                                            showCalibrationWizardForColor = pump.name
+                                        } else {
+                                            showKSCalibrationForColor = pump.name
+                                        }
                                     },
                                     modifier = Modifier.fillMaxWidth()
                                 ) {
                                     Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.padding(8.dp)) {
                                         Text("Color Calibration", fontWeight = FontWeight.Bold)
-                                        Text("Scan pigment to set K/S values", style = MaterialTheme.typography.labelSmall)
+                                        if (uiState.spectralSensorEnabled) {
+                                            Text("Open Guided Wizard ✨", style = MaterialTheme.typography.labelSmall)
+                                        } else {
+                                            Text("Manual Entry / View", style = MaterialTheme.typography.labelSmall)
+                                        }
                                     }
                                 }
                             } else {
@@ -277,6 +228,17 @@ fun SettingsModal(
             settingsViewModel = settingsViewModel,
             lockedToPump = true,
             onDismissRequest = { showFlowCalibratorForIndex = null }
+        )
+    }
+
+    if (showCalibrationWizardForColor != null) {
+        CalibrationWizardDialog(
+            pigmentName = showCalibrationWizardForColor!!,
+            onDismissRequest = { showCalibrationWizardForColor = null },
+            onCalibrated = { newKS ->
+                settingsViewModel.updatePigmentKS(showCalibrationWizardForColor!!, newKS)
+            },
+            settingsViewModel = settingsViewModel
         )
     }
 

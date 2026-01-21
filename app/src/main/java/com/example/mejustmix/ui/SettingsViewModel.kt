@@ -92,6 +92,11 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
     init {
         loadSettings()
         
+        // Auto-connect to Spectral Sensor if available
+        if (uiState.value.spectralSensorEnabled) {
+            spectralManager.scanAndAutoConnect()
+        }
+        
         // Collect Spectral State
         viewModelScope.launch {
             spectralManager.connectionState.collect { status ->
@@ -556,5 +561,87 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
     fun setWhiteReference(data: List<Float>) {
         _uiState.update { it.copy(whiteReference = data) }
         saveSettings()
+    }
+    
+    fun exportSpectralData() {
+        val data = _uiState.value.spectralData
+        if (data == null || data.size != 18) {
+            showToast("No spectral data to export")
+            return
+        }
+        
+        // AS7265x wavelengths in nm
+        val wavelengths = listOf(410, 435, 460, 485, 510, 535, 560, 585, 610, 645, 680, 705, 730, 760, 810, 860, 900, 940)
+        
+        viewModelScope.launch {
+            try {
+                val timestamp = java.text.SimpleDateFormat("yyyyMMdd_HHmmss", java.util.Locale.US).format(java.util.Date())
+                val filename = "spectral_data_$timestamp.csv"
+                
+                // Create CSV content
+                val csvContent = buildString {
+                    appendLine("Wavelength (nm),Intensity")
+                    wavelengths.forEachIndexed { index, wavelength ->
+                        appendLine("$wavelength,${data[index]}")
+                    }
+                }
+                
+                // Save to Downloads folder
+                val downloadsDir = android.os.Environment.getExternalStoragePublicDirectory(android.os.Environment.DIRECTORY_DOWNLOADS)
+                val file = java.io.File(downloadsDir, filename)
+                file.writeText(csvContent)
+                
+                showToast("Exported to Downloads/$filename")
+            } catch (e: Exception) {
+                e.printStackTrace()
+                showToast("Export failed: ${e.message}")
+            }
+        }
+    }
+    
+    fun importSpectralData(uri: android.net.Uri) {
+        viewModelScope.launch {
+            try {
+                val context = getApplication<Application>()
+                val inputStream = context.contentResolver.openInputStream(uri)
+                val csvText = inputStream?.bufferedReader()?.use { it.readText() }
+                
+                if (csvText == null) {
+                    showToast("Failed to read file")
+                    return@launch
+                }
+                
+                // Parse CSV
+                val lines = csvText.lines().filter { it.isNotBlank() }
+                if (lines.size < 19) { // Header + 18 data lines
+                    showToast("Invalid CSV format")
+                    return@launch
+                }
+                
+                val intensities = mutableListOf<Float>()
+                
+                // Skip header, parse data lines
+                for (i in 1 until lines.size) {
+                    val parts = lines[i].split(",")
+                    if (parts.size >= 2) {
+                        val intensity = parts[1].trim().toFloatOrNull()
+                        if (intensity != null) {
+                            intensities.add(intensity)
+                        }
+                    }
+                }
+                
+                if (intensities.size == 18) {
+                    _uiState.update { it.copy(spectralData = intensities) }
+                    showToast("Spectral data imported successfully!")
+                } else {
+                    showToast("Invalid data: Expected 18 wavelengths, got ${intensities.size}")
+                }
+                
+            } catch (e: Exception) {
+                e.printStackTrace()
+                showToast("Import failed: ${e.message}")
+            }
+        }
     }
 }

@@ -2,6 +2,8 @@ package com.example.mejustmix.services
 
 import android.annotation.SuppressLint
 import android.bluetooth.*
+import android.bluetooth.le.ScanCallback
+import android.bluetooth.le.ScanResult
 import android.content.Context
 import android.os.Handler
 import android.os.Looper
@@ -9,9 +11,11 @@ import android.util.Log
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import java.util.*
+import kotlin.collections.ArrayList
 
 /**
  * Manages BLE connection to the ESP32 Spectral Sensor Bridge.
+ * Updated with Rolling Average Noise Reduction and Auto-Connect.
  */
 @SuppressLint("MissingPermission")
 class SpectralSensorManager(private val context: Context) {
@@ -20,7 +24,7 @@ class SpectralSensorManager(private val context: Context) {
     private val SERVICE_UUID = UUID.fromString("4fafc201-1fb5-459e-8fcc-c5c9c331914b")
     private val CHAR_DATA_UUID = UUID.fromString("beb5483e-36e1-4688-b7f5-ea07361b26a8")
     private val CHAR_CONTROL_UUID = UUID.fromString("824c965e-269c-4869-9f79-6a3f124c6536")
-    private val CCCD_UUID = UUID.fromString("00002902-0000-1000-8000-00805f9b34fb") // Standard Client Config
+    private val CCCD_UUID = UUID.fromString("00002902-0000-1000-8000-00805f9b34fb")
 
     private var bluetoothAdapter: BluetoothAdapter? = null
     private var bluetoothGatt: BluetoothGatt? = null
@@ -33,10 +37,20 @@ class SpectralSensorManager(private val context: Context) {
 
     private val _lastReading = MutableStateFlow<List<Float>?>(null)
     val lastReading: StateFlow<List<Float>?> = _lastReading
+    
+    // Rolling Average Buffer
+    private val scanBuffer = ArrayList<List<Float>>()
+    private var pendingScans = 0
+    private val SCAN_COUNT = 7  // Increased from 5 to 7 for better noise reduction
 
     init {
         val bluetoothManager = context.getSystemService(Context.BLUETOOTH_SERVICE) as BluetoothManager
         bluetoothAdapter = bluetoothManager.adapter
+    }
+
+    fun scanAndAutoConnect() {
+         if (bluetoothGatt != null) return // Already connected
+         connect() // Re-uses the existing specific scanning logic
     }
 
     fun connect() {
@@ -47,33 +61,31 @@ class SpectralSensorManager(private val context: Context) {
 
         _connectionState.value = "Scanning..."
         
-        // Simple scan callback to find our specific device
         val scanner = bluetoothAdapter!!.bluetoothLeScanner
-        val scanCallback = object : android.bluetooth.le.ScanCallback() {
-            override fun onScanResult(callbackType: Int, result: android.bluetooth.le.ScanResult?) {
+        val scanCallback = object : ScanCallback() {
+            override fun onScanResult(callbackType: Int, result: ScanResult?) {
                 result?.device?.let { device ->
-                    // In a real app, you might match by Name or Service UUID. 
-                    // For now, we'll check the name or just connect to the first thing that advertises our Service if possible.
-                    // However, standard scan results often don't contain Service UUIDs unless specified.
-                    // Let's match by Name for simplicity as set in Firmware: "ESP32_Spectral_Bridge"
                     if (device.name == "ESP32_Spectral_Bridge") {
                         scanner.stopScan(this)
-                        _connectionState.value = "Connecting to ${device.name}..."
+                        _connectionState.value = "Found ${device.name}, Connecting..."
                         bluetoothGatt = device.connectGatt(context, false, gattCallback)
                     }
                 }
+            }
+            override fun onScanFailed(errorCode: Int) {
+                 _connectionState.value = "Scan Failed ($errorCode)"
             }
         }
         
         scanner.startScan(scanCallback)
         
-        // Stop scan after 10s if not found
+        // Stop scan after 5s if not found
         Handler(Looper.getMainLooper()).postDelayed({
             if (_connectionState.value == "Scanning...") {
                 scanner.stopScan(scanCallback)
                 _connectionState.value = "Device Not Found"
             }
-        }, 10000)
+        }, 5000)
     }
 
     fun disconnect() {
@@ -83,14 +95,47 @@ class SpectralSensorManager(private val context: Context) {
         _connectionState.value = "Disconnected"
     }
 
+    /**
+     * Triggers a Rolling Average Scan sequence.
+     * Takes [SCAN_COUNT] readings, averages them, and updates [lastReading].
+     */
     fun triggerScan() {
         if (bluetoothGatt != null && controlCharacteristic != null) {
-            controlCharacteristic!!.value = byteArrayOf(1) // "1"
-            bluetoothGatt!!.writeCharacteristic(controlCharacteristic)
-            _connectionState.value = "Requesting Scan..."
+            _connectionState.value = "Acquiring samples..."
+            scanBuffer.clear()
+            pendingScans = SCAN_COUNT 
+            sendScanCommand()
         } else {
             _connectionState.value = "Not Connected"
         }
+    }
+    
+    private fun sendScanCommand() {
+        if (bluetoothGatt != null && controlCharacteristic != null) {
+            controlCharacteristic!!.value = byteArrayOf(1)
+            bluetoothGatt!!.writeCharacteristic(controlCharacteristic)
+        }
+    }
+    
+    private fun processBuffer() {
+        if (scanBuffer.isEmpty()) return
+        
+        // If we didn't get enough samples for some reason, just average what we have
+        val samples = scanBuffer.size
+        
+        // Compute Average
+        val sum = FloatArray(18) { 0f }
+        scanBuffer.forEach { reading ->
+            reading.forEachIndexed { i, value ->
+                 sum[i] += value
+            }
+        }
+        
+        val average = sum.map { it / samples }
+        
+        _lastReading.value = average
+        _connectionState.value = "Data Received (Avg of $samples)"
+        Log.d("Spectral", "Averaged Reading: $average")
     }
 
     private val gattCallback = object : BluetoothGattCallback() {
@@ -98,7 +143,7 @@ class SpectralSensorManager(private val context: Context) {
             if (newState == BluetoothProfile.STATE_CONNECTED) {
                 _connectionState.value = "Connected. Discovering Services..."
                 gatt?.discoverServices()
-                gatt?.requestMtu(256) // Request higher MTU for the long data string
+                gatt?.requestMtu(256)
             } else if (newState == BluetoothProfile.STATE_DISCONNECTED) {
                 _connectionState.value = "Disconnected"
                 bluetoothGatt = null
@@ -112,7 +157,6 @@ class SpectralSensorManager(private val context: Context) {
                     dataCharacteristic = service.getCharacteristic(CHAR_DATA_UUID)
                     controlCharacteristic = service.getCharacteristic(CHAR_CONTROL_UUID)
 
-                    // Enable Notifications
                     if (dataCharacteristic != null) {
                         gatt.setCharacteristicNotification(dataCharacteristic, true)
                         val descriptor = dataCharacteristic!!.getDescriptor(CCCD_UUID)
@@ -121,7 +165,7 @@ class SpectralSensorManager(private val context: Context) {
                         _connectionState.value = "Ready"
                     }
                 } else {
-                    _connectionState.value = "Service Not Found"
+                    _connectionState.value = "Ready (Service Missing?)" 
                 }
             }
         }
@@ -139,12 +183,30 @@ class SpectralSensorManager(private val context: Context) {
         try {
             val values = csv.split(",").map { it.toFloat() }
             if (values.size == 18) {
-                _lastReading.value = values
-                _connectionState.value = "Data Received"
-                Log.d("Spectral", "Received: $values")
+                
+                if (pendingScans > 0) {
+                    scanBuffer.add(values)
+                    pendingScans--
+                    
+                    if (pendingScans > 0) {
+                        // Request next sample after short delay to let sensor reset
+                        Handler(Looper.getMainLooper()).postDelayed({
+                             sendScanCommand()
+                        }, 50)  // Reduced from 150ms to 50ms for faster scanning
+                        _connectionState.value = "Sampling... ($pendingScans left)"
+                    } else {
+                        // All Done
+                        processBuffer()
+                    }
+                } else {
+                    // Single shot or unsolicited data
+                    _lastReading.value = values
+                    _connectionState.value = "Single Reading Received"
+                }
             }
         } catch (e: Exception) {
             Log.e("Spectral", "Parse Error: $csv")
         }
     }
 }
+
