@@ -68,7 +68,7 @@ This repository contains the Android application source code.
 1.  Build the APK from source, or download from releases.
 2.  Install on your Android device.
 3.  Connect to the machine's IP over Wi-Fi.
-4.  Run a few calibrations. (tip, start with water to test. then move to paint after you confirmed it pumps. calibrate everythiingg with paint, ***not water***, they flow differently)
+4.  Run a few calibrations. (tip, start with water to test. then move to paint after you confirmed it pumps. calibrate everythingg with paint, ***not water***, they flow differently)
 5.  Start mixing.
 
 ---
