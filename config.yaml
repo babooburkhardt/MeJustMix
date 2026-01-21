@@ -1,0 +1,115 @@
+board: MKS TinyBee V1.0
+name: MeJustMix
+meta: Fixed I2S Engine
+kinematics: {}
+stepping:
+  engine: I2S_STATIC
+  idle_ms: 250
+  pulse_us: 4
+  dir_delay_us: 1
+  disable_delay_us: 0
+i2so:
+  bck_pin: gpio.25
+  data_pin: gpio.27
+  ws_pin: gpio.26
+axes:
+  shared_stepper_disable_pin: NO_PIN
+  x:
+    steps_per_mm: 100
+    max_rate_mm_per_min: 12000
+    acceleration_mm_per_sec2: 500
+    max_travel_mm: 10000
+    soft_limits: false
+    motor0:
+      limit_neg_pin: NO_PIN
+      hard_limits: false
+      limit_pos_pin: NO_PIN
+      limit_all_pin: NO_PIN
+      stepstick:
+        step_pin: i2so.1
+        direction_pin: i2so.2
+        disable_pin: i2so.0
+        ms1_pin: NO_PIN
+        ms2_pin: NO_PIN
+        ms3_pin: NO_PIN
+  y:
+    steps_per_mm: 100
+    max_rate_mm_per_min: 12000
+    acceleration_mm_per_sec2: 500
+    max_travel_mm: 10000
+    soft_limits: false
+    motor0:
+      limit_neg_pin: NO_PIN
+      hard_limits: false
+      stepstick:
+        step_pin: i2so.4
+        direction_pin: i2so.5
+        disable_pin: i2so.3
+        ms1_pin: NO_PIN
+        ms2_pin: NO_PIN
+        ms3_pin: NO_PIN
+      limit_pos_pin: NO_PIN
+      limit_all_pin: NO_PIN
+  z:
+    steps_per_mm: 100
+    max_rate_mm_per_min: 12000
+    acceleration_mm_per_sec2: 500
+    max_travel_mm: 10000
+    soft_limits: false
+    motor0:
+      limit_neg_pin: NO_PIN
+      hard_limits: false
+      stepstick:
+        step_pin: i2so.7
+        direction_pin: i2so.8
+        disable_pin: i2so.6
+        ms1_pin: NO_PIN
+        ms2_pin: NO_PIN
+        ms3_pin: NO_PIN
+      limit_pos_pin: NO_PIN
+      limit_all_pin: NO_PIN
+  a:
+    steps_per_mm: 100
+    max_rate_mm_per_min: 12000
+    acceleration_mm_per_sec2: 500
+    max_travel_mm: 10000
+    soft_limits: false
+    motor0:
+      limit_neg_pin: NO_PIN
+      hard_limits: false
+      stepstick:
+        step_pin: i2so.10
+        direction_pin: i2so.11
+        disable_pin: i2so.9
+        ms1_pin: NO_PIN
+        ms2_pin: NO_PIN
+        ms3_pin: NO_PIN
+      limit_pos_pin: NO_PIN
+      limit_all_pin: NO_PIN
+  b:
+    steps_per_mm: 100
+    max_rate_mm_per_min: 12000
+    acceleration_mm_per_sec2: 500
+    max_travel_mm: 10000
+    soft_limits: false
+    motor0:
+      limit_neg_pin: NO_PIN
+      hard_limits: false
+      stepstick:
+        step_pin: i2so.13
+        direction_pin: i2so.14
+        disable_pin: i2so.12
+        ms1_pin: NO_PIN
+        ms2_pin: NO_PIN
+        ms3_pin: NO_PIN
+      limit_pos_pin: NO_PIN
+      limit_all_pin: NO_PIN
+spi:
+  miso_pin: gpio.19
+  mosi_pin: gpio.23
+  sck_pin: gpio.18
+sdcard:
+  cs_pin: gpio.5
+  card_detect_pin: NO_PIN
+start:
+  must_home: false
