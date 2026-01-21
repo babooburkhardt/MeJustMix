@@ -7,7 +7,7 @@
 ---
 
 ## 🛠️ The Hardware
-For the STLs, full assembly instructions, and motor mounts, head over to the project page:
+For the STLs, and motor mounts, head over to the project page:
 👉 **[MeJustMix on Printables](https://www.printables.com/model/1563458-mejustmix)**
 
 ### Bill of Materials (BOM)     ..if i forgot something i apoligize.. still a WIP
