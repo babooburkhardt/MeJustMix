@@ -779,18 +779,15 @@ fun ColorTile(
                 .background(color)
                 .border(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha=0.2f), RoundedCornerShape(16.dp))
                 .combinedClickable(
-                    onClick = onClick,
-                    onLongClick = onLongClick
+                    onClick = {
+                        onClick()
+                    },
+                    onLongClick = {
+                        onLongClick()
+                    },
+                    onClickLabel = "Select color",
+                    onLongClickLabel = "Edit color"
                 )
-                .pointerInput(Unit) {
-                    detectTapGestures(
-                        onPress = {
-                            isPressed = true
-                            tryAwaitRelease()
-                            isPressed = false
-                        }
-                    )
-                }
         )
         
         if (name.isNotEmpty()) {
@@ -838,18 +835,15 @@ fun PhotoTile(
                 .clip(RoundedCornerShape(16.dp))
                 .border(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha=0.2f), RoundedCornerShape(16.dp))
                 .combinedClickable(
-                    onClick = onClick,
-                    onLongClick = onLongClick
+                    onClick = {
+                        onClick()
+                    },
+                    onLongClick = {
+                        onLongClick()
+                    },
+                    onClickLabel = "Select photo",
+                    onLongClickLabel = "Edit photo"
                 )
-                .pointerInput(Unit) {
-                    detectTapGestures(
-                        onPress = {
-                            isPressed = true
-                            tryAwaitRelease()
-                            isPressed = false
-                        }
-                    )
-                }
         ) {
             AsyncImage(
                 model = uriString,

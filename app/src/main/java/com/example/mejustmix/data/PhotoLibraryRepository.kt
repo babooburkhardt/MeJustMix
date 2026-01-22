@@ -20,6 +20,13 @@ class PhotoLibraryRepository(private val context: Context) {
     private val file = File(context.filesDir, "photo_library.json")
     private val backupFile = File(context.filesDir, "photo_library_backup.json")
 
+    private val json = Json {
+        ignoreUnknownKeys = true
+        encodeDefaults = true
+        coerceInputValues = true
+        isLenient = true
+    }
+
     /**
      * Saves the photo library to disk with automatic backup.
      * Creates a backup of the existing file before overwriting.
@@ -31,7 +38,7 @@ class PhotoLibraryRepository(private val context: Context) {
                 file.copyTo(backupFile, overwrite = true)
             }
             
-            val jsonString = Json.encodeToString(library)
+            val jsonString = json.encodeToString(library)
             file.writeText(jsonString)
         } catch (e: Exception) {
             e.printStackTrace()
@@ -48,7 +55,7 @@ class PhotoLibraryRepository(private val context: Context) {
         if (file.exists()) {
             try {
                 val jsonString = file.readText()
-                return@withContext Json.decodeFromString<List<PhotoFolder>>(jsonString)
+                return@withContext json.decodeFromString<List<PhotoFolder>>(jsonString)
             } catch (e: Exception) {
                 e.printStackTrace()
                 
@@ -56,7 +63,7 @@ class PhotoLibraryRepository(private val context: Context) {
                 if (backupFile.exists()) {
                     try {
                         val jsonString = backupFile.readText()
-                        val library = Json.decodeFromString<List<PhotoFolder>>(jsonString)
+                        val library = json.decodeFromString<List<PhotoFolder>>(jsonString)
                         
                         // Restore backup to main file
                         backupFile.copyTo(file, overwrite = true)

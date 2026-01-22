@@ -75,7 +75,7 @@ class MixViewModel @JvmOverloads constructor(
             }
             folder.copy(colors = sortedColors)
         }
-    }.stateIn(viewModelScope, SharingStarted.Lazily, emptyList())
+    }.stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
 
     val photoLibrary: StateFlow<List<PhotoFolder>> = _photoLibraryRaw.map { folders ->
         folders.map { folder ->
@@ -86,7 +86,7 @@ class MixViewModel @JvmOverloads constructor(
             }
             folder.copy(photos = sortedPhotos)
         }
-    }.stateIn(viewModelScope, SharingStarted.Lazily, emptyList())
+    }.stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
 
 
     private val _lastUsedPhotoFolderName = MutableStateFlow<String?>(null)
