@@ -81,8 +81,8 @@ data class SettingsUiState(
     val realPaintPreviewIntensity: Float = 0.7f,
     
     // Pulse mode settings
-    val usePulseMode: Boolean = false,
-    val pulseMinimum: Int = 1,              // Minimum pulses for any non-zero component
+    val usePulseMode: Boolean = true,
+    val pulseMinimum: Int = 0,              // Minimum pulses for any non-zero component
     
     // Pulse compensation geometry (used when pulse mode is enabled)
     val pillowLengthMm: Float = 40f,        // Total pillow length
@@ -432,7 +432,7 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
     }
     
     fun updatePulseMinimum(minimum: Int) {
-        _uiState.update { it.copy(pulseMinimum = minimum.coerceAtLeast(1)) }
+        _uiState.update { it.copy(pulseMinimum = minimum.coerceAtLeast(0)) }
         saveSettings()
     }
     

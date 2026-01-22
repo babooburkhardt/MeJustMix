@@ -782,12 +782,16 @@ fun PulseModeSettingsCard(
                 HorizontalDivider()
                 
                 Text("Minimum pulses per component:", style = MaterialTheme.typography.labelMedium)
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    listOf(1, 2, 3, 5).forEach { min ->
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(4.dp, Alignment.CenterHorizontally)
+                ) {
+                    listOf(0, 1, 2, 3).forEach { min ->
                         FilterChip(
                             selected = pulseMinimum == min,
                             onClick = { onPulseMinimumChange(min) },
-                            label = { Text("$min") }
+                            label = { Text("$min") },
+                            modifier = Modifier.defaultMinSize(minWidth = 1.dp)
                         )
                     }
                 }
@@ -796,36 +800,6 @@ fun PulseModeSettingsCard(
                     style = MaterialTheme.typography.bodySmall,
                     color = Color.Gray
                 )
-                
-                HorizontalDivider()
-                
-                Text("Pump Homing:", style = MaterialTheme.typography.labelMedium)
-                Text(
-                    "Align rollers to home position before dispensing",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = Color.Gray
-                )
-                pumps.forEachIndexed { index, pump ->
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Column {
-                            Text(pump.name, fontWeight = FontWeight.Medium)
-                            Text(
-                                "${String.format("%.2f", pump.mlPerPulse)} mL/pulse",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = Color.Gray
-                            )
-                        }
-                        TextButton(onClick = { onCalibratePump(index) }) {
-                            Icon(Icons.Default.Home, null, modifier = Modifier.size(18.dp))
-                            Spacer(Modifier.width(4.dp))
-                            Text("Home")
-                        }
-                    }
-                }
             }
         }
     }
