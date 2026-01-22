@@ -428,6 +428,136 @@ object GCodeGenerator {
     }
 
     /**
+     * Generates G-code for parallel dispensing (Simul-Mix).
+     * All pumps run simultaneously at the same volumetric flow rate.
+     * 
+     * @param flowRateMlPerSec Target flow rate per pump in mL/s
+     */
+    fun generateParallelMixingScript(
+        mix: PaintMix,
+        totalVolumeMl: Float,
+        retractionSteps: Float,
+        pumps: List<PumpConfig>,
+        flowRateMlPerSec: Float,
+        maxFeedRate: Float = 5000f
+    ): List<String> {
+        if (pumps.size < 5) throw IllegalArgumentException("Requires at least 5 pumps")
+
+        val commands = mutableListOf<String>()
+        val activeAxes = mutableSetOf<String>()
+
+        fun getPump(name: String, defaultIndex: Int): PumpConfig {
+            return pumps.find { it.name.equals(name, ignoreCase = true) } 
+                ?: pumps.getOrElse(defaultIndex) { pumps[0] }
+        }
+
+        // 1. Calculate required volume & steps for each pump
+        data class PumpPlan(
+            val pump: PumpConfig,
+            val volumeMl: Float,
+            val totalSteps: Float,
+            val durationSec: Float
+        )
+
+        val plans = mutableListOf<PumpPlan>()
+        val pumpData = listOf(
+            "Cyan" to (getPump("Cyan", 0) to mix.cyan),
+            "Magenta" to (getPump("Magenta", 1) to mix.magenta),
+            "Yellow" to (getPump("Yellow", 2) to mix.yellow),
+            "Black" to (getPump("Black", 3) to mix.black),
+            "White" to (getPump("White", 4) to mix.white)
+        )
+
+        for ((name, data) in pumpData) {
+            val (pump, ratio) = data
+            val volumeNeeded = ratio * totalVolumeMl
+            if (volumeNeeded > 0.001f) {
+                val stepsPerMl = pump.calibration.toFloatOrNull() ?: 100f
+                val totalSteps = volumeNeeded * stepsPerMl
+                val duration = volumeNeeded / flowRateMlPerSec
+                
+                plans.add(PumpPlan(pump, volumeNeeded, totalSteps, duration))
+                activeAxes.add(pump.axis)
+            }
+        }
+
+        if (plans.isEmpty()) return listOf("G91", "G90")
+
+        // Reset positions
+        val allAxes = pumps.map { it.axis }.take(5).joinToString(" ") { "${it}0" }
+        commands.add("G92 $allAxes")
+        commands.add("G91")
+
+        // 2. Create sorted list of "Stop Events"
+        // We sort by duration ascending to handle pumps dropping out one by one
+        val sortedPlans = plans.sortedBy { it.durationSec }
+        
+        // 3. Generate Time Segments
+        var currentTime = 0f
+        
+        for (i in sortedPlans.indices) {
+            val plan = sortedPlans[i]
+            val segmentDuration = plan.durationSec - currentTime
+            
+            if (segmentDuration > 0.001f) {
+                // Find all pumps active in this segment (duration > currentTime)
+                val activePlans = sortedPlans.filter { it.durationSec > currentTime }
+                val activeCount = activePlans.size
+                
+                // Calculate moves for this segment
+                val moveCmd = StringBuilder("G1")
+                var hasMove = false
+                
+                // Calculate feed rate for this segment
+                var sumSquares = 0f
+                for (active in activePlans) {
+                    val stepsPerMl = active.pump.calibration.toFloatOrNull() ?: 100f
+                    val axisSpeedStepsPerSec = flowRateMlPerSec * stepsPerMl
+                    val stepsInSegment = axisSpeedStepsPerSec * segmentDuration
+                    
+                    moveCmd.append(" ${active.pump.axis}${String.format("%.2f", stepsInSegment)}")
+                    sumSquares += stepsInSegment * stepsInSegment
+                    hasMove = true
+                }
+                
+                if (hasMove) {
+                    val euclideanDistance = kotlin.math.sqrt(sumSquares)
+                    val durationMin = segmentDuration / 60f
+                    val feedRate = (euclideanDistance / durationMin).toInt().coerceAtMost(maxFeedRate.toInt()).coerceAtMost(MAX_SAFE_FEED_RATE)
+                    
+                    moveCmd.append(" F$feedRate")
+                    commands.add(moveCmd.toString())
+                }
+            }
+            
+            currentTime = plan.durationSec
+        }
+
+        // 4. Simultaneous Retraction
+        if (retractionSteps > 0 && activeAxes.isNotEmpty()) {
+            val retractCmd = StringBuilder("G1")
+            var sumSquares = 0f
+            
+            for (axis in activeAxes.distinct()) {
+                retractCmd.append(" ${axis}-${retractionSteps.toInt()}")
+                sumSquares += retractionSteps * retractionSteps
+            }
+            
+            // Retract speed (fast)
+            val avgCal = pumps.map { it.calibration.toFloatOrNull() ?: 100f }.average().toFloat()
+            val retractDurationSec = 0.5f // Target 0.5s for retraction
+            val euclideanDistance = kotlin.math.sqrt(sumSquares)
+            val retractFeed = (euclideanDistance / (retractDurationSec / 60f)).toInt().coerceAtMost(MAX_SAFE_FEED_RATE)
+            
+            retractCmd.append(" F$retractFeed")
+            commands.add(retractCmd.toString())
+        }
+
+        commands.add("G90")
+        return commands
+    }
+
+    /**
      * Generate G-code to home a pump to the nearest pulse boundary.
      * 
      * This moves the pump forward to complete the current partial pulse,

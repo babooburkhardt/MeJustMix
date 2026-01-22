@@ -771,8 +771,34 @@ fun SettingsModal(
                                 )
                             }
                             
+                            // --- Simul-Mix (Parallel Dispensing) ---
+                            HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp))
+                            
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(
+                                        "🚀 Simul-Mix (Parallel Dispensing)",
+                                        fontWeight = FontWeight.SemiBold,
+                                        style = MaterialTheme.typography.bodyMedium
+                                    )
+                                    Text(
+                                        "Dispense all colors simultaneously. Disables pulse compensation.",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = Color.Gray
+                                    )
+                                }
+                                Switch(
+                                    checked = uiState.useSimulMix,
+                                    onCheckedChange = { settingsViewModel.setUseSimulMix(it) }
+                                )
+                            }
+                            
                             // --- Pulse Compensation Geometry ---
-                            if (uiState.usePulseMode) {
+                            if (uiState.usePulseMode && !uiState.useSimulMix) {
                                 HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
                                 
                                 Text(

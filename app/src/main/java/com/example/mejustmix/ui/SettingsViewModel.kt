@@ -35,7 +35,14 @@ data class PumpConfig(
     // Pulse mode calibration
     val stepsPerPulse: Float = 50f,          // Steps for one complete roller rotation
     val mlPerPulse: Float = 0.5f,            // mL dispensed per pulse (calibrated)
-    val pulseHomeOffset: Float = 0f          // Steps from current position to pulse boundary (0 = at home)
+    val pulseHomeOffset: Float = 0f,         // Steps from current position to pulse boundary (0 = at home)
+    
+    // Geometry-based homing
+    val lastKnownAngle: Float = 225f,        // Last observed roller angle (225° = pulse boundary)
+    
+    // Drift tracking (learns pump behavior over time)
+    val driftHistory: List<Float> = emptyList(),  // History of drift measurements in degrees
+    val driftCompensation: Float = 0f             // Applied drift compensation in degrees
 )
 
 data class SettingsUiState(
@@ -85,6 +92,9 @@ data class SettingsUiState(
     val useDynamicAcceleration: Boolean = false,  // Enable FluidNC acceleration adjustment
     val taperAcceleration: Float = 500f,          // Acceleration for taper zones (mm/s²)
     val nominalAcceleration: Float = 1000f,       // Nominal acceleration for full-flow zones (mm/s²)
+    
+    // Simul-Mix (Parallel Dispensing)
+    val useSimulMix: Boolean = false,             // Dispense all colors simultaneously
     
     // FluidNC speed limits (for "you can go faster" configuration)
     val maxFeedRate: Float = 5000f,               // Max feed rate per axis (mm/min) - $110-$115
@@ -533,6 +543,75 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
     }
     
     /**
+     * Save pump position based on observed roller angle.
+     * This eliminates the need for priming - just tell the app where the roller is.
+     * 
+     * @param pumpIndex Index of the pump
+     * @param observedAngle Current roller angle in degrees (0-360)
+     * @param driftDegrees Measured drift from expected position (null if first calibration)
+     */
+    fun savePumpAngle(pumpIndex: Int, observedAngle: Float, driftDegrees: Float?) {
+        val pump = _uiState.value.pumps.getOrNull(pumpIndex) ?: return
+        
+        // Calculate offset from angle using geometry utils
+        val stepsToHome = com.example.mejustmix.utils.PulseGeometryUtils.stepsToNextBoundary(observedAngle)
+        
+        // Update drift history if we have drift data
+        val updatedDriftHistory = if (driftDegrees != null) {
+            // Keep last 10 drift measurements
+            (pump.driftHistory + driftDegrees).takeLast(10)
+        } else {
+            pump.driftHistory
+        }
+        
+        // Analyze drift pattern for auto-compensation
+        val driftAnalysis = com.example.mejustmix.utils.PulseGeometryUtils.analyzeDriftPattern(updatedDriftHistory)
+        val newCompensation = driftAnalysis.recommendedCompensation ?: pump.driftCompensation
+        
+        _uiState.update { state ->
+            val updatedPumps = state.pumps.toMutableList()
+            updatedPumps[pumpIndex] = pump.copy(
+                pulseHomeOffset = stepsToHome,
+                lastKnownAngle = observedAngle,
+                driftHistory = updatedDriftHistory,
+                driftCompensation = newCompensation
+            )
+            state.copy(pumps = updatedPumps)
+        }
+        saveSettings()
+        
+        // Show appropriate message
+        val message = when {
+            driftAnalysis.recommendedCompensation != null && driftDegrees != null ->
+                "${pump.name} position saved. Drift pattern detected: ${String.format("%.1f", driftAnalysis.averageDrift)}°/session auto-compensated!"
+            driftDegrees != null ->
+                "${pump.name} position saved. Drift: ${String.format("%.1f", driftDegrees)}° (${updatedDriftHistory.size}/5 samples for pattern detection)"
+            else ->
+                "${pump.name} position saved at ${observedAngle.toInt()}°"
+        }
+        showToast(message)
+    }
+    
+    /**
+     * Clear drift history for a pump (e.g., after tube change).
+     */
+    fun clearPumpDriftHistory(pumpIndex: Int) {
+        val pump = _uiState.value.pumps.getOrNull(pumpIndex) ?: return
+        
+        _uiState.update { state ->
+            val updatedPumps = state.pumps.toMutableList()
+            updatedPumps[pumpIndex] = pump.copy(
+                driftHistory = emptyList(),
+                driftCompensation = 0f
+            )
+            state.copy(pumps = updatedPumps)
+        }
+        saveSettings()
+        showToast("${pump.name} drift history cleared")
+    }
+
+    
+    /**
      * Update a pump's mL per pulse calibration value.
      * Steps per pulse is known from motor specs, only mL/pulse needs calibration.
      * 
@@ -799,6 +878,14 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
      */
     fun setNominalAcceleration(value: Float) {
         _uiState.update { it.copy(nominalAcceleration = value.coerceIn(100f, 3000f)) }
+        saveSettings()
+    }
+    
+    /**
+     * Enable or disable Simul-Mix (Parallel Dispensing).
+     */
+    fun setUseSimulMix(enabled: Boolean) {
+        _uiState.update { it.copy(useSimulMix = enabled) }
         saveSettings()
     }
     

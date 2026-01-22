@@ -35,11 +35,39 @@ data class CalibrationRun(
 )
 
 /**
- * Improved pulse calibration dialog with validation, feedback, and multi-run averaging.
+ * Simplified pulse calibration dialog - just angle-based position input.
+ * No priming step required.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun PulseCalibrationDialog(
+    pump: PumpConfig,
+    pumpIndex: Int,
+    onDismiss: () -> Unit,
+    onSave: (mlPerPulse: Float) -> Unit,
+    onDispensePulses: (pulseCount: Int) -> Unit,
+    onPrimeToPulseHome: () -> Unit
+) {
+    // Redirect to the new AngleHomingDialog
+    // This maintains backward compatibility while using the new angle-based approach
+    AngleHomingDialog(
+        pump = pump,
+        onDismiss = onDismiss,
+        onSaveAngle = { angle, drift ->
+            // This will be handled by SettingsViewModel.savePumpAngle
+            // For now, just close the dialog
+            onDismiss()
+        }
+    )
+}
+
+/**
+ * DEPRECATED - Old 2-step dialog kept for reference.
+ * Use AngleHomingDialog instead.
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun PulseCalibrationDialogOld(
     pump: PumpConfig,
     pumpIndex: Int,
     onDismiss: () -> Unit,
@@ -81,88 +109,42 @@ fun PulseCalibrationDialog(
                     }
                 }
                 
-                // Simple 2-step indicator
+                // Simple single-step indicator
                 Row(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceEvenly,
+                    horizontalArrangement = Arrangement.Center,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    val steps = listOf("Home", "Prime")
-                    
-                    steps.forEachIndexed { index, label ->
-                        Column(
-                            horizontalAlignment = Alignment.CenterHorizontally,
-                            modifier = Modifier.weight(1f)
-                        ) {
-                            Box(
-                                modifier = Modifier
-                                    .size(40.dp)
-                                    .clip(CircleShape)
-                                    .background(
-                                        color = when {
-                                            index + 1 < currentStep -> MaterialTheme.colorScheme.primary
-                                            index + 1 == currentStep -> MaterialTheme.colorScheme.secondary
-                                            else -> Color.LightGray.copy(alpha = 0.3f)
-                                        }
-                                    ),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                if (index + 1 < currentStep) {
-                                    Icon(
-                                        Icons.Default.Check,
-                                        null,
-                                        tint = Color.White,
-                                        modifier = Modifier.size(20.dp)
-                                    )
-                                } else {
-                                    Text(
-                                        "${index + 1}",
-                                        color = if (index + 1 == currentStep) Color.White else Color.Gray,
-                                        fontWeight = FontWeight.Bold
-                                    )
-                                }
-                            }
-                            Spacer(Modifier.height(4.dp))
-                            Text(
-                                label,
-                                style = MaterialTheme.typography.labelSmall,
-                                fontWeight = if (index + 1 == currentStep) FontWeight.Bold else FontWeight.Normal,
-                                color = if (index + 1 == currentStep) MaterialTheme.colorScheme.primary else Color.Gray
-                            )
-                        }
-                        
-                        if (index < steps.size - 1) {
-                            Box(
-                                modifier = Modifier
-                                    .weight(0.5f)
-                                    .height(2.dp)
-                                    .background(
-                                        if (index + 1 < currentStep)
-                                            MaterialTheme.colorScheme.primary
-                                        else
-                                            Color.LightGray.copy(alpha = 0.3f)
-                                    )
-                                    .align(Alignment.CenterVertically)
-                            )
-                        }
+                    Box(
+                        modifier = Modifier
+                            .size(40.dp)
+                            .clip(CircleShape)
+                            .background(MaterialTheme.colorScheme.primary),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            Icons.Default.Home,
+                            null,
+                            tint = Color.White,
+                            modifier = Modifier.size(20.dp)
+                        )
                     }
+                    Spacer(Modifier.width(8.dp))
+                    Text(
+                        "Set Position",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.primary
+                    )
                 }
                 
                 HorizontalDivider()
                 
-                when (currentStep) {
-                    1 -> Step1VisualHoming(
-                        pump, stepsPerPulse, trackedOffsetSteps,
-                        onOffsetChange = { trackedOffsetSteps = it },
-                        onNext = { currentStep = 2 }
-                    )
-                    2 -> Step2Prime(
-                        pump, trackedOffsetSteps, stepsPerPulse, hasPrimed,
-                        onPrime = { onPrimeToPulseHome(); hasPrimed = true },
-                        onBack = { currentStep = 1 },
-                        onNext = { onDismiss() } // Just close after priming
-                    )
-                }
+                Step1VisualHoming(
+                    pump, stepsPerPulse, trackedOffsetSteps,
+                    onOffsetChange = { trackedOffsetSteps = it },
+                    onNext = { onDismiss() }  // Just close, no priming
+                )
             }
         }
     }
@@ -287,9 +269,9 @@ fun Step1VisualHoming(
         
         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
             Button(onClick = onNext) {
-                Text("Next: Prime to Home")
+                Icon(Icons.Default.Check, null, modifier = Modifier.size(18.dp))
                 Spacer(Modifier.width(4.dp))
-                Icon(Icons.Default.ArrowForward, null, modifier = Modifier.size(18.dp))
+                Text("Done")
             }
         }
     }

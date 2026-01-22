@@ -141,33 +141,48 @@ class PrinterRepository private constructor(context: Context) {
             val gcode: List<String>
             val actualVolume: Float
             
-            if (settings.usePulseMode) {
-                // Calculate pulse compensation profile from geometry settings
-                val flowRateMlPerSec = settings.flowRate.toFloatOrNull() ?: 2.0f
-                val avgCalibration = settings.pumps.map { it.calibration.toFloatOrNull() ?: 100f }.average().toFloat()
-                val baseFeedRate = (flowRateMlPerSec * avgCalibration * 60).toInt() // Convert to mm/min
-                
-                val profile = com.example.mejustmix.utils.PulseCompensationCalculator.calculateProfile(
-                    pillowLengthMm = settings.pillowLengthMm,
-                    fullDiameterSectionMm = settings.fullDiameterSectionMm,
-                    tubeInnerDiameterMm = settings.tubeInnerDiameterMm,
-                    baseFeedRate = baseFeedRate  // Use actual flow rate for accurate acceleration calculation
-                )
-                
-                gcode = GCodeGenerator.generateMixingScript(
-                    mix = mix,
-                    totalVolumeMl = volume,
-                    retractionSteps = settings.retractionSteps.toFloatOrNull() ?: 15f,
-                    pumps = settings.pumps,
-                    flowRateMlPerSec = flowRateMlPerSec,
-                    usePulseMode = true,
-                    pulseMinimum = settings.pulseMinimum,
-                    pulseProfile = profile,
-                    useDynamicAcceleration = settings.useDynamicAcceleration,
-                    taperAcceleration = settings.taperAcceleration,
-                    nominalAcceleration = settings.nominalAcceleration,
-                    maxFeedRate = settings.maxFeedRate
-                )
+                // Check for Simul-Mix (Parallel Dispensing)
+                if (settings.useSimulMix) {
+                    gcode = GCodeGenerator.generateParallelMixingScript(
+                        mix = mix,
+                        totalVolumeMl = volume,
+                        retractionSteps = settings.retractionSteps.toFloatOrNull() ?: 15f,
+                        pumps = settings.pumps,
+                        flowRateMlPerSec = settings.flowRate.toFloatOrNull() ?: 2.0f,
+                        maxFeedRate = settings.maxFeedRate
+                    )
+                    addToHistory(">> SIMUL-MIX: Parallel dispensing enabled")
+                    actualVolume = volume
+                } else if (settings.usePulseMode) {
+                    // Calculate pulse compensation profile from geometry settings
+                    val flowRateMlPerSec = settings.flowRate.toFloatOrNull() ?: 2.0f
+                    val avgCalibration = settings.pumps.map { it.calibration.toFloatOrNull() ?: 100f }.average().toFloat()
+                    val baseFeedRate = (flowRateMlPerSec * avgCalibration * 60).toInt() // Convert to mm/min
+                    
+                    val profile = com.example.mejustmix.utils.PulseCompensationCalculator.calculateProfile(
+                        pillowLengthMm = settings.pillowLengthMm,
+                        fullDiameterSectionMm = settings.fullDiameterSectionMm,
+                        tubeInnerDiameterMm = settings.tubeInnerDiameterMm,
+                        baseFeedRate = baseFeedRate  // Use actual flow rate for accurate acceleration calculation
+                    )
+                    
+                    gcode = GCodeGenerator.generateMixingScript(
+                        mix = mix,
+                        totalVolumeMl = volume,
+                        retractionSteps = settings.retractionSteps.toFloatOrNull() ?: 15f,
+                        pumps = settings.pumps,
+                        flowRateMlPerSec = flowRateMlPerSec,
+                        usePulseMode = true,
+                        pulseMinimum = settings.pulseMinimum,
+                        pulseProfile = profile,
+                        useDynamicAcceleration = settings.useDynamicAcceleration,
+                        taperAcceleration = settings.taperAcceleration,
+                        nominalAcceleration = settings.nominalAcceleration,
+                        maxFeedRate = settings.maxFeedRate
+                    )
+                    
+                    // For pulse mode, we need to calculate actual volume from the profile
+
                 
                 // For pulse mode, we need to calculate actual volume from the profile
                 // This is approximate since we're using compensated segments
@@ -284,7 +299,9 @@ class PrinterRepository private constructor(context: Context) {
             val pump = settings.pumps[pumpIndex]
             val flowRate = settings.flowRate.toFloatOrNull() ?: 2.0f
             
-            val (gcode, vol) = GCodeGenerator.generatePulseHomeScript(pump, flowRate)
+            val result: Pair<List<String>, Float> = GCodeGenerator.generatePulseHomeScript(pump, flowRate)
+            val gcode = result.first
+            val vol = result.second
             dispensed = vol
             
             if (gcode.isNotEmpty()) {
