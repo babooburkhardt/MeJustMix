@@ -88,6 +88,7 @@ data class SettingsUiState(
     val pillowLengthMm: Float = 40f,        // Total pillow length
     val tubeInnerDiameterMm: Float = 3f,    // Tube bore (for volume calculations)
     val fullDiameterSectionMm: Float = 32f, // Length at full tube expansion
+    val pulseSmoothingStrength: Float = 1.0f, // Tuning factor for pulse compensation (1.0 = standard, >1.0 = stronger, <1.0 = weaker)
     
     // Dynamic acceleration control
     val useDynamicAcceleration: Boolean = false,  // Enable FluidNC acceleration adjustment
@@ -479,6 +480,11 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
     
     fun updatePulseMinimum(minimum: Int) {
         _uiState.update { it.copy(pulseMinimum = minimum.coerceAtLeast(0)) }
+        saveSettings()
+    }
+    
+    fun updatePulseSmoothingStrength(strength: Float) {
+        _uiState.update { it.copy(pulseSmoothingStrength = strength.coerceIn(0f, 3f)) }
         saveSettings()
     }
     

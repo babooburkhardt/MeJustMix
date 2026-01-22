@@ -44,7 +44,7 @@ object KSPigmentRepository {
             magenta = KSColor(ksR = 0.1f, ksG = 4.0f, ksB = 0.8f, s = 1.0f),
             yellow = KSColor(ksR = 0.02f, ksG = 0.5f, ksB = 4.0f, s = 1.0f),
             black = KSColor(ksR = 20.0f, ksG = 20.0f, ksB = 20.0f, s = 1.0f),
-            white = KSColor(ksR = 0.01f, ksG = 0.01f, ksB = 0.01f, s = 1.0f) // Adjusted to 1.0 (Standard) per user request
+            white = KSColor(ksR = 0.01f, ksG = 0.01f, ksB = 0.01f, s = 0.8f) // Adjusted to 0.8 per user request
         )
     }
     

@@ -401,7 +401,8 @@ class PrinterRepository private constructor(context: Context) {
             pillowLengthMm = settings.pillowLengthMm,
             fullDiameterSectionMm = settings.fullDiameterSectionMm,
             tubeInnerDiameterMm = settings.tubeInnerDiameterMm,
-            baseFeedRate = baseFeedRate
+            baseFeedRate = baseFeedRate,
+            strengthFactor = settings.pulseSmoothingStrength
         )
     }
 }

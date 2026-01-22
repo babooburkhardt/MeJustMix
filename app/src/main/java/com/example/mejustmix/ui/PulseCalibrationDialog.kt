@@ -734,6 +734,8 @@ fun PulseModeSettingsCard(
     onPulseMinimumChange: (Int) -> Unit,
     onCalibratePump: (Int) -> Unit,
     onSnapAllToHome: () -> Unit,
+    pulseSmoothingStrength: Float = 1.0f,
+    onPulseSmoothingChange: (Float) -> Unit,
     pumps: List<PumpConfig>,
     modifier: Modifier = Modifier
 ) {
@@ -800,6 +802,35 @@ fun PulseModeSettingsCard(
                     "Higher = more accurate ratios, larger minimum volume",
                     style = MaterialTheme.typography.bodySmall,
                     color = Color.Gray
+                )
+                
+                HorizontalDivider()
+                
+                Text("Pulse Smoothing:", style = MaterialTheme.typography.labelMedium)
+                Text(
+                    "Adjust if flow pulses or surges (1.0 = Default)",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = Color.Gray
+                )
+                
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text("0.0", style = MaterialTheme.typography.labelSmall)
+                    Slider(
+                        value = pulseSmoothingStrength,
+                        onValueChange = onPulseSmoothingChange,
+                        valueRange = 0f..2.5f,
+                        steps = 24, // 0.1 increments
+                        modifier = Modifier.weight(1f).padding(horizontal = 8.dp)
+                    )
+                    Text("2.5", style = MaterialTheme.typography.labelSmall)
+                }
+                Text(
+                    "Current: ${String.format("%.1f", pulseSmoothingStrength)}x " + 
+                    if(pulseSmoothingStrength > 1.05f) "(Filling dips)" else if (pulseSmoothingStrength < 0.95f) "(Reducing surges)" else "(Standard)",
+                    style = MaterialTheme.typography.bodySmall, 
+                    modifier = Modifier.align(Alignment.CenterHorizontally),
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.primary
                 )
                 
                 Spacer(Modifier.height(8.dp))

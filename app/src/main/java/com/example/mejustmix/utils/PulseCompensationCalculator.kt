@@ -15,17 +15,23 @@ import java.util.Locale
  */
 object PulseCompensationCalculator {
     
+    private const val MAX_SAFE_FEED_RATE = 12000 // Safe upper limit for stepper motors
+    
     /**
      * Represents a pulse compensation profile with zones and speed modifiers.
      */
     data class PulseProfile(
         val taperFraction: Float,           // 0.0-0.5 (fraction of pillow that is taper on each side)
-        val taperSpeedMultiplier: Float,    // Speed multiplier for taper zones (typically 1.5-3.0)
-        val nominalSpeedFraction: Float,    // Fraction of pillow at nominal speed (1.0 - 2*taperFraction)
+        val entrySpeedMultiplier: Float,    // Speed multiplier for taper entry (surge suppression, typ 0.8-1.0)
+        val exitSpeedMultiplier: Float,     // Speed multiplier for taper exit (dip compensation, typ 1.5-3.0)
+        val nominalSpeedFraction: Float,    // Fraction of pillow at nominal speed
         val taperLengthMm: Float,           // Calculated taper length in mm
         val volumePerPillowMl: Float,       // Estimated volume per pillow in mL
         val optimalTaperAcceleration: Float // Recommended acceleration for taper zones (mm/s²)
-    )
+    ) {
+        // Legacy property for backward compatibility or summary
+        val taperSpeedMultiplier: Float get() = exitSpeedMultiplier 
+    }
     
     /**
      * Calculate the compensation profile from tube geometry.
@@ -40,18 +46,29 @@ object PulseCompensationCalculator {
         pillowLengthMm: Float,
         fullDiameterSectionMm: Float,
         tubeInnerDiameterMm: Float = 3f,
-        baseFeedRate: Int = 1000
+        baseFeedRate: Int = 1000,
+        strengthFactor: Float = 1.0f
     ): PulseProfile {
         // Calculate taper length (each side)
         val taperLength = ((pillowLengthMm - fullDiameterSectionMm) / 2f).coerceAtLeast(0f)
         val taperFraction = (taperLength / pillowLengthMm).coerceIn(0.01f, 0.49f)
         
-        // Speed multiplier: Inverse of average volume flow in taper zone
-        // At taper entry, effective area = ~0%; at taper exit, effective area = 100%
-        // Average effective area in taper = 50%
-        // To match volume flow, speed must be: 1 / 0.5 = 2x
-        // However, we use a slightly more conservative multiplier
-        val taperSpeedMultiplier = 2.0f
+        // Asymmetric Compensation Strategy:
+        // 1. Entry Taper (Touch-down): This inherently causes a surge (positive displacement).
+        //    Ideally we would SLOW down.
+        //    If smoothing strength is high (>1.2), we start suppressing the surge.
+        //    Formula: starts at 1.0, drops to 0.7 as strength goes to 2.5
+        val entryMultiplier = if (strengthFactor > 1.2f) {
+            (1.0f - (0.23f * (strengthFactor - 1.2f))).coerceAtLeast(0.7f)
+        } else {
+            1.0f
+        } 
+        
+        // 2. Exit Taper (Lift-off): This inherently causes a dip (vacuum/backflow).
+        //    We must SPEED UP significantly to fill the void.
+        //    Base requirement is approx 2.0x, scaled by geometry and user strength factor.
+        val baseExitMultiplier = 2.0f
+        val exitMultiplier = 1.0f + ((baseExitMultiplier - 1.0f) * strengthFactor)
         
         // Volume calculation using cylinder approximation
         // V = π * r² * L (for full section)
@@ -64,38 +81,24 @@ object PulseCompensationCalculator {
         val volumeMl = totalVolumeMm3 / 1000f // Convert mm³ to mL
         
         // Calculate optimal acceleration for taper zones
-        // Goal: Match the volume gradient dV/dx in the taper
-        // 
-        // Physics:
-        // - Volume flow rate Q = A(x) * v(x) where A(x) is cross-sectional area, v(x) is velocity
-        // - For constant Q, if A increases linearly, v must decrease linearly
-        // - Linear velocity change over distance requires constant acceleration
-        // 
-        // Calculation:
-        // - Velocity change: Δv = v_fast - v_nominal = baseFeedRate * (taperSpeedMultiplier - 1)
-        // - Distance: taperLength (in mm)
-        // - Convert feed rate from mm/min to mm/s: baseFeedRate / 60
-        // - Acceleration a = (v_final² - v_initial²) / (2 * distance)
-        // 
-        // For entry taper (deceleration from fast to nominal):
-        val vFastMmPerSec = (baseFeedRate * taperSpeedMultiplier) / 60f
+        // We calculate based on the massive acceleration needed for the Exit (Lift-off) phase
+        val vFastMmPerSec = (baseFeedRate * exitMultiplier) / 60f
         val vNominalMmPerSec = baseFeedRate / 60f
-        val taperLengthMeters = taperLength / 1000f // Convert mm to meters for calculation
+        val taperLengthMeters = taperLength / 1000f 
         
-        // Using kinematic equation: v² = u² + 2as, solve for a
         // a = (v² - u²) / (2s)
         val optimalAcceleration = if (taperLength > 0.1f) {
-            val deltaVSquared = (vNominalMmPerSec * vNominalMmPerSec) - (vFastMmPerSec * vFastMmPerSec)
+            val deltaVSquared = (vFastMmPerSec * vFastMmPerSec) - (vNominalMmPerSec * vNominalMmPerSec)
             val accelMmPerSecSquared = deltaVSquared / (2f * taperLength)
-            // Take absolute value and convert to positive (we want magnitude)
-            kotlin.math.abs(accelMmPerSecSquared).coerceIn(100f, 1500f)
+            kotlin.math.abs(accelMmPerSecSquared).coerceIn(100f, 2500f) // Increased max cap for aggressive compensation
         } else {
-            500f // Default for very short tapers
+            500f 
         }
         
         return PulseProfile(
             taperFraction = taperFraction,
-            taperSpeedMultiplier = taperSpeedMultiplier.coerceIn(1.2f, 4.0f),
+            entrySpeedMultiplier = entryMultiplier,
+            exitSpeedMultiplier = exitMultiplier.coerceIn(1.2f, 5.0f),
             nominalSpeedFraction = (1f - (2f * taperFraction)).coerceAtLeast(0.1f),
             taperLengthMm = taperLength,
             volumePerPillowMl = volumeMl,
@@ -128,12 +131,13 @@ object PulseCompensationCalculator {
     ): List<GCodeSegment> {
         val taperSteps = stepsPerPillow * profile.taperFraction
         val nominalSteps = stepsPerPillow * profile.nominalSpeedFraction
-        val fastFeed = (baseFeedRate * profile.taperSpeedMultiplier).toInt()
+        val entryFeed = (baseFeedRate * profile.entrySpeedMultiplier).toInt().coerceAtMost(MAX_SAFE_FEED_RATE)
+        val exitFeed = (baseFeedRate * profile.exitSpeedMultiplier).toInt().coerceAtMost(MAX_SAFE_FEED_RATE)
         
         return listOf(
-            GCodeSegment(taperSteps, fastFeed, "Entry taper"),
+            GCodeSegment(taperSteps, entryFeed, "Entry taper"),
             GCodeSegment(nominalSteps, baseFeedRate, "Full flow"),
-            GCodeSegment(taperSteps, fastFeed, "Exit taper")
+            GCodeSegment(taperSteps, exitFeed, "Exit taper")
         )
     }
     
@@ -165,14 +169,16 @@ object PulseCompensationCalculator {
         val taperSteps = stepsPerPillow * profile.taperFraction
         val fullFlowSteps = stepsPerPillow * profile.nominalSpeedFraction
         val exitStart = stepsPerPillow - taperSteps
-        val fastFeed = (baseFeedRate * profile.taperSpeedMultiplier).toInt()
+        
+        val entryFeed = (baseFeedRate * profile.entrySpeedMultiplier).toInt().coerceAtMost(MAX_SAFE_FEED_RATE)
+        val exitFeed = (baseFeedRate * profile.exitSpeedMultiplier).toInt().coerceAtMost(MAX_SAFE_FEED_RATE)
         
         while (remainingToDispense > 0.01f) {
             // Determine current zone and steps remaining in it
             val (zoneStepsRemaining, zoneFeed, zoneDesc) = when {
                 currentPhase < taperSteps -> {
                     // Entry Taper
-                    Triple(taperSteps - currentPhase, fastFeed, "Entry taper")
+                    Triple(taperSteps - currentPhase, entryFeed, "Entry taper")
                 }
                 currentPhase < exitStart -> {
                     // Full Flow
@@ -180,7 +186,7 @@ object PulseCompensationCalculator {
                 }
                 else -> {
                     // Exit Taper
-                    Triple(stepsPerPillow - currentPhase, fastFeed, "Exit taper")
+                    Triple(stepsPerPillow - currentPhase, exitFeed, "Exit taper")
                 }
             }
             

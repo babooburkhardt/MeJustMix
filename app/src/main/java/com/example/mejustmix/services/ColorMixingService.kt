@@ -16,7 +16,7 @@ data class PigmentStrengths(
     val magenta: Float = 2.5f,
     val yellow: Float = 1.0f,
     val black: Float = 5.0f,
-    val white: Float = 1.0f,
+    val white: Float = 0.8f,
     val gamma: Float = 1.0f
 )
 

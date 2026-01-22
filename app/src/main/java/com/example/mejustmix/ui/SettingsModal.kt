@@ -800,6 +800,8 @@ fun SettingsModal(
                                 onPulseMinimumChange = { settingsViewModel.updatePulseMinimum(it) },
                                 onCalibratePump = { index -> showRollerCalibrationForIndex = index },
                                 onSnapAllToHome = { settingsViewModel.snapAllPumpsToHome() },
+                                pulseSmoothingStrength = uiState.pulseSmoothingStrength,
+                                onPulseSmoothingChange = { settingsViewModel.updatePulseSmoothingStrength(it) },
                                 pumps = uiState.pumps
                             )
                             
