@@ -128,6 +128,7 @@ fun SettingsModal(
     
     // Pulse Mode States
     var showPulseCalibrationForIndex by rememberSaveable { mutableStateOf<Int?>(null) }
+    var showRollerCalibrationForIndex by rememberSaveable { mutableStateOf<Int?>(null) }
 
     // --- FILE PICKERS ---
     val exportLauncher = rememberLauncherForActivityResult(
@@ -212,6 +213,22 @@ fun SettingsModal(
                                         Text("Color Calibration", fontWeight = FontWeight.Bold)
                                         Text("Visual matching calibration", style = MaterialTheme.typography.labelSmall)
                                     }
+                                }
+                            }
+                        }
+                        
+                        // Roller Position Calibration (Pulse Mode)
+                        if (uiState.usePulseMode) {
+                            Button(
+                                onClick = { 
+                                    calibrationChooserIndex = null
+                                    showRollerCalibrationForIndex = index
+                                },
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.padding(8.dp)) {
+                                    Text("Roller Position", fontWeight = FontWeight.Bold)
+                                    Text("Set home position for pulse mode", style = MaterialTheme.typography.labelSmall)
                                 }
                             }
                         }
@@ -311,6 +328,24 @@ fun SettingsModal(
             )
         } else {
             showPulseCalibrationForIndex = null
+        }
+    }
+    
+    if (showRollerCalibrationForIndex != null) {
+        val index = showRollerCalibrationForIndex!!
+        val pump = uiState.pumps.getOrNull(index)
+        
+        if (pump != null) {
+            AngleHomingDialog(
+                pump = pump,
+                onDismiss = { showRollerCalibrationForIndex = null },
+                onSaveAngle = { currentAngle, driftDegrees ->
+                    settingsViewModel.savePumpAngle(index, currentAngle, driftDegrees)
+                    showRollerCalibrationForIndex = null
+                }
+            )
+        } else {
+            showRollerCalibrationForIndex = null
         }
     }
 
@@ -1151,6 +1186,7 @@ fun SinglePumpSettingsDialog(
     var showFlowCalibrator by rememberSaveable { mutableStateOf(false) }
     var showKSCalibration by rememberSaveable { mutableStateOf(false) }
     var showPigmentTuner by rememberSaveable { mutableStateOf(false) }
+    var showRollerCalibration by rememberSaveable { mutableStateOf(false) }
 
     if (showPrimeDialogForAxis != null) {
         PrimingDialog(
@@ -1262,12 +1298,28 @@ fun SinglePumpSettingsDialog(
                             }
                         }
                     }
+                    
+                    // Roller Position Calibration (Pulse Mode)
+                    if (uiState.usePulseMode) {
+                        Button(
+                            onClick = { 
+                                showChooser = false
+                                showRollerCalibration = true
+                            },
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.padding(8.dp)) {
+                                Text("Roller Position", fontWeight = FontWeight.Bold)
+                                Text("Set home position for pulse mode", style = MaterialTheme.typography.labelSmall)
+                            }
+                        }
+                    }
                 }
             },
             confirmButton = { TextButton(onClick = { showChooser = false }) { Text("Cancel") } }
         )
     }
-
+    
     if (showFlowCalibrator) {
         FlowCalibratorDialog(
             initialPumpIndex = pumpIndex,
@@ -1299,6 +1351,17 @@ fun SinglePumpSettingsDialog(
             mixViewModel = mixViewModel,
             lockedColor = pump.name,
             settingsViewModel = settingsViewModel
+        )
+    }
+    
+    if (showRollerCalibration) {
+        AngleHomingDialog(
+            pump = pump,
+            onDismiss = { showRollerCalibration = false },
+            onSaveAngle = { currentAngle, driftDegrees ->
+                settingsViewModel.savePumpAngle(pumpIndex, currentAngle, driftDegrees)
+                showRollerCalibration = false
+            }
         )
     }
 

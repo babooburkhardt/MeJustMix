@@ -104,7 +104,10 @@ data class SettingsUiState(
     val spectralSensorEnabled: Boolean = false,
     val spectralConnectionStatus: String = "Disconnected",
     val spectralData: List<Float>? = null,
-    val whiteReference: List<Float>? = null
+    val whiteReference: List<Float>? = null,
+    
+    // First-time setup
+    val hasSeenCalibrationWarning: Boolean = false
 )
 
 class SettingsViewModel(application: Application) : AndroidViewModel(application) {
@@ -254,6 +257,11 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
 
     fun toggleSpectralSensor(enabled: Boolean) {
         _uiState.update { it.copy(spectralSensorEnabled = enabled) }
+        saveSettings()
+    }
+    
+    fun markCalibrationWarningSeen() {
+        _uiState.update { it.copy(hasSeenCalibrationWarning = true) }
         saveSettings()
     }
 

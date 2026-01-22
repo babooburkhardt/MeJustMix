@@ -146,6 +146,26 @@ fun MainScreen() {
             mixViewModel.clearPumpWarning()
         }
     }
+    
+    // Show calibration warning for first-time users
+    var showCalibrationWarning by rememberSaveable { mutableStateOf(false) }
+    
+    LaunchedEffect(settingsState.hasSeenCalibrationWarning) {
+        if (!settingsState.hasSeenCalibrationWarning && settingsState.connectionMode != null) {
+            // Only show after connection mode is set
+            showCalibrationWarning = true
+        }
+    }
+    
+    if (showCalibrationWarning) {
+        CalibrationWarningDialog(
+            onDismiss = { showCalibrationWarning = false },
+            onAcknowledge = {
+                settingsViewModel.markCalibrationWarningSeen()
+                showCalibrationWarning = false
+            }
+        )
+    }
 
     // NEW: The Sending Popup
     if (isSending) {
