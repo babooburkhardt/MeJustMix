@@ -733,6 +733,7 @@ fun PulseModeSettingsCard(
     onTogglePulseMode: (Boolean) -> Unit,
     onPulseMinimumChange: (Int) -> Unit,
     onCalibratePump: (Int) -> Unit,
+    onSnapAllToHome: () -> Unit,
     pumps: List<PumpConfig>,
     modifier: Modifier = Modifier
 ) {
@@ -800,6 +801,17 @@ fun PulseModeSettingsCard(
                     style = MaterialTheme.typography.bodySmall,
                     color = Color.Gray
                 )
+                
+                Spacer(Modifier.height(8.dp))
+                
+                OutlinedButton(
+                    onClick = onSnapAllToHome,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Icon(Icons.Default.Home, null, modifier = Modifier.size(18.dp))
+                    Spacer(Modifier.width(8.dp))
+                    Text("Snap All to Nearest Pulse Boundary")
+                }
             }
         }
     }

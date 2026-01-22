@@ -58,6 +58,15 @@ class PrinterRepository private constructor(context: Context) {
     private val _pumpPhaseSteps = mutableMapOf<String, Float>()
 
     /**
+     * Resets all pump phase tracking to zero.
+     * Call this when physically homing pumps.
+     */
+    fun resetAllPhases() {
+        _pumpPhaseSteps.clear()
+        // Initialize all known pumps to 0 if needed, or just let them start at 0
+    }
+
+    /**
      * Connect to a machine using its profile.
      */
     fun connectToMachine(machine: MachineProfile) {
@@ -352,7 +361,7 @@ class PrinterRepository private constructor(context: Context) {
     /**
      * Send G-code commands to the active connection (BLE or WiFi).
      */
-    private fun sendGCodeCommands(commands: List<String>) {
+    fun sendGCodeCommands(commands: List<String>) {
         when (currentConnectionType) {
             ConnectionType.BLE -> {
                 commands.forEach { command ->

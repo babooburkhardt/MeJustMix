@@ -336,11 +336,12 @@ fun SettingsModal(
         val pump = uiState.pumps.getOrNull(index)
         
         if (pump != null) {
-            AngleHomingDialog(
+            RollerPositionDialog(
                 pump = pump,
                 onDismiss = { showRollerCalibrationForIndex = null },
-                onSaveAngle = { currentAngle, driftDegrees ->
-                    settingsViewModel.savePumpAngle(index, currentAngle, driftDegrees)
+                onSavePosition = { offsetSteps ->
+                    // Convert steps to angle for storage (optional, or store steps directly)
+                    settingsViewModel.savePumpAngle(index, offsetSteps, null)
                     showRollerCalibrationForIndex = null
                 }
             )
@@ -797,7 +798,8 @@ fun SettingsModal(
                                 pulseMinimum = uiState.pulseMinimum,
                                 onTogglePulseMode = { settingsViewModel.togglePulseMode(it) },
                                 onPulseMinimumChange = { settingsViewModel.updatePulseMinimum(it) },
-                                onCalibratePump = { index -> showPulseCalibrationForIndex = index },
+                                onCalibratePump = { index -> showRollerCalibrationForIndex = index },
+                                onSnapAllToHome = { settingsViewModel.snapAllPumpsToHome() },
                                 pumps = uiState.pumps
                             )
                             
@@ -1355,11 +1357,11 @@ fun SinglePumpSettingsDialog(
     }
     
     if (showRollerCalibration) {
-        AngleHomingDialog(
+        RollerPositionDialog(
             pump = pump,
             onDismiss = { showRollerCalibration = false },
-            onSaveAngle = { currentAngle, driftDegrees ->
-                settingsViewModel.savePumpAngle(pumpIndex, currentAngle, driftDegrees)
+            onSavePosition = { offsetSteps ->
+                settingsViewModel.savePumpAngle(pumpIndex, offsetSteps, null)
                 showRollerCalibration = false
             }
         )

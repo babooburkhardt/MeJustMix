@@ -211,35 +211,23 @@ fun PulseHomeScrollWheel(
             }
         }
         
-        // Snap to home button
-        Button(
-            onClick = {
-                // Snap to nearest home position
-                val nearestHome = (accumulatedSteps / stepsPerPulse).roundToInt() * stepsPerPulse
-                accumulatedSteps = nearestHome
-                onOffsetChange(nearestHome)
-            },
-            modifier = Modifier.fillMaxWidth(),
-            enabled = !isAtHome
-        ) {
-            Text("Snap to Nearest Home")
-        }
+        // Snap button moved to Pulse Minimum settings as requested
         
-        // Mark as home button
+        // Save Current Position button
         Button(
             onClick = onMarkHome,
             modifier = Modifier.fillMaxWidth(),
-            enabled = isAtHome,
+            enabled = true, // Always enabled - just saving state
             colors = ButtonDefaults.buttonColors(
                 containerColor = MaterialTheme.colorScheme.primary
             )
         ) {
             Icon(
-                imageVector = Icons.Default.Home,
+                imageVector = Icons.Default.CheckCircle,
                 contentDescription = null
             )
             Spacer(Modifier.width(8.dp))
-            Text("Mark as Home Position")
+            Text("Save Current Position")
         }
         
         // Technical info

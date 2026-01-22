@@ -13,7 +13,7 @@ import java.util.Locale
 data class PulseDispenseResult(
     val commands: List<String>,
     val actualVolumeMl: Float,
-    val pulseCounts: Map<String, Int>,  // Pump name -> pulse count
+    val pulseCounts: Map<String, Float>,  // Pump name -> pulse count
     val scaleFactor: Float              // How much we scaled up (1.0 = no scaling)
 )
 
@@ -81,7 +81,15 @@ object GCodeGenerator {
         } else if (usePulseMode) {
             // Fallback to simple pulse mode if no profile provided
             val result = generatePulseMixingScript(mix, totalVolumeMl, retractionSteps, pumps, flowRateMlPerSec, pulseMinimum)
-            Pair(result.commands, emptyMap())
+            
+            // Calculate new phases
+            val newPhases = pumpPhases.toMutableMap()
+            result.pulseCounts.forEach { (name, pulses) ->
+                val currentPhase = newPhases[name] ?: 0f
+                newPhases[name] = (currentPhase + pulses) % 1.0f
+            }
+            
+            Pair(result.commands, newPhases)
         } else {
             // Standard mL-based dispensing
             val cmds = generateStandardMixingScript(mix, totalVolumeMl, retractionSteps, pumps, flowRateMlPerSec)
@@ -212,7 +220,7 @@ object GCodeGenerator {
             return PulseDispenseResult(
                 commands = listOf("G91", "G90"),
                 actualVolumeMl = 0f,
-                pulseCounts = emptyMap(),
+                pulseCounts = emptyMap<String, Float>(),
                 scaleFactor = 1f
             )
         }
@@ -226,12 +234,16 @@ object GCodeGenerator {
             1f
         }
 
-        // Step 4: Round all to whole pulses
-        val wholePulses = rawPulses.mapValues { (_, raw) ->
+        // Step 4: Calculate fractional pulses (no rounding unless forced by minimum)
+        val finalPulses = rawPulses.mapValues { (_, raw) ->
             if (raw > 0.001f) {
-                (raw * scaleFactor).roundToInt().coerceAtLeast(pulseMinimum)
+                // Scale up if needed to meet minimum
+                val scaled = raw * scaleFactor
+                // Ensure we meet the minimum (effective floor)
+                // Note: If pulseMinimum is 0, this is effectively just 'scaled'
+                scaled.coerceAtLeast(pulseMinimum.toFloat())
             } else {
-                0
+                0f
             }
         }
 
@@ -247,18 +259,21 @@ object GCodeGenerator {
         var hasMovement = false
         var actualTotalVolume = 0f
 
+        val pulseCounts = mutableMapOf<String, Float>()
+
         for ((name, data) in pumpData) {
             val (pump, _) = data
-            val pulses = wholePulses[name] ?: 0
+            val pulses = finalPulses[name] ?: 0f
             
-            if (pulses > 0) {
-                val steps = (pulses * pump.stepsPerPulse).toInt()
+            if (pulses > 0.001f) {
+                val steps = pulses * pump.stepsPerPulse
                 val volume = pulses * pump.mlPerPulse
                 
-                dispenseLine.append("${pump.axis}$steps ")
+                dispenseLine.append("${pump.axis}${String.format(Locale.US, "%.2f", steps)} ")
                 activeAxes.add(pump.axis)
                 hasMovement = true
                 actualTotalVolume += volume
+                pulseCounts[name] = pulses
             }
         }
 
@@ -293,7 +308,7 @@ object GCodeGenerator {
         return PulseDispenseResult(
             commands = commands,
             actualVolumeMl = actualTotalVolume,
-            pulseCounts = wholePulses,
+            pulseCounts = pulseCounts,
             scaleFactor = scaleFactor
         )
     }

@@ -431,6 +431,52 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
         saveSettings()
     }
     
+    /**
+     * Snap all pumps to their nearest pulse boundary (home position).
+     * Used to physically align rollers for integer-pulse dispensing.
+     */
+    fun snapAllPumpsToHome() {
+        val cmds = mutableListOf<String>()
+        val newPumps = _uiState.value.pumps.toMutableList()
+        var hasMovement = false
+        
+        cmds.add("G91") // Relative positioning
+        
+        newPumps.forEachIndexed { index, pump ->
+            val currentAngle = pump.lastKnownAngle ?: 0f
+            val stepsPerPulse = pump.stepsPerPulse
+            
+            // Calculate steps to nearest home
+            // Convert angle to steps from home: (angle/360) * stepsPerPulse
+            val stepsFromHome = (currentAngle / 360f) * stepsPerPulse
+            val nearestHomeSteps = kotlin.math.round(stepsFromHome / stepsPerPulse) * stepsPerPulse
+            val deltaSteps = nearestHomeSteps - stepsFromHome
+            
+            // If significant movement needed (ignore tiny rounding errors)
+            if (kotlin.math.abs(deltaSteps) > 0.5f) {
+                cmds.add("G1 ${pump.axis}${String.format(java.util.Locale.US, "%.2f", deltaSteps)} F${_uiState.value.maxFeedRate.toInt()}")
+                hasMovement = true
+            }
+            
+            // Update pump state to be at home (0 degrees)
+            newPumps[index] = pump.copy(lastKnownAngle = 0f)
+        }
+        
+        cmds.add("G90") // Back to absolute
+        
+        if (hasMovement) {
+            viewModelScope.launch {
+                val repository = PrinterRepository.getInstance(getApplication())
+                repository.sendGCodeCommands(cmds)
+                // Also reset phase tracking in repo
+                repository.resetAllPhases()
+            }
+            // Update UI state with new 0 angles
+            _uiState.update { it.copy(pumps = newPumps) }
+            saveSettings()
+        }
+    }
+    
     fun updatePulseMinimum(minimum: Int) {
         _uiState.update { it.copy(pulseMinimum = minimum.coerceAtLeast(0)) }
         saveSettings()
