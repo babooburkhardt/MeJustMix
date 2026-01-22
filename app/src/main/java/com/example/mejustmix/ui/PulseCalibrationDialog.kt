@@ -55,11 +55,9 @@ fun PulseCalibrationDialog(
     // This ensures the GUI matches the actual known roller position
     var trackedOffsetSteps by remember { 
         mutableStateOf(
-            if (pump.lastKnownAngle != null) {
+            run {
                 val stepsPerPulse = PulseModeCalculator.calculateStepsPerPulse(1.8f, 4f, 3)
                 (pump.lastKnownAngle / 360f) * stepsPerPulse
-            } else {
-                pump.pulseHomeOffset
             }
         ) 
     }
