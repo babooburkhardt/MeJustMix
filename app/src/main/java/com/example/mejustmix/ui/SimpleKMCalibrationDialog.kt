@@ -218,13 +218,14 @@ fun SimpleKMCalibrationDialog(
                                             4 -> PaintMix(0f, 0f, 0f, 0f, 1f)
                                             else -> PaintMix(0f, 0f, 0f, 0f, 1f)
                                         }
-                                        val gcode = GCodeGenerator.generateMixingScript(
+                                        val result = GCodeGenerator.generateMixingScript(
                                             mix = pureTestMix,
                                             totalVolumeMl = 5f,
                                             retractionSteps = 15f,
                                             pumps = settingsState.pumps,
                                             flowRateMlPerSec = settingsState.flowRate.toFloatOrNull() ?: 2f
                                         )
+                                        val gcode = result.first
                                         mixViewModel.sendRawGCode(gcode)
                                     },
                                     modifier = Modifier.fillMaxWidth()
@@ -322,13 +323,14 @@ fun SimpleKMCalibrationDialog(
                                             3 -> PaintMix(0f, 0f, 0f, 0.5f, 0.5f)
                                             else -> PaintMix(0f, 0f, 0f, 0f, 1f)
                                         }
-                                        val gcode = GCodeGenerator.generateMixingScript(
+                                        val result = GCodeGenerator.generateMixingScript(
                                             mix = tintTestMix,
                                             totalVolumeMl = 10f,
                                             retractionSteps = 15f,
                                             pumps = settingsState.pumps,
                                             flowRateMlPerSec = settingsState.flowRate.toFloatOrNull() ?: 2f
                                         )
+                                        val gcode = result.first
                                         mixViewModel.sendRawGCode(gcode)
                                     },
                                     modifier = Modifier.fillMaxWidth()

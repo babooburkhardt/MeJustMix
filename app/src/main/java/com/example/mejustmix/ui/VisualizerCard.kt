@@ -184,6 +184,7 @@ fun VisualizerCard(
             }
 
             val isEnabled = mixViewModel.isMixPossible(totalVolume)
+            val needsRefill = mixViewModel.needsRefill(totalVolume)
             val isManualMode = mixViewModel.manualBaseName.value != null
             val cornerShape = RoundedCornerShape(12.dp)
 
@@ -209,7 +210,9 @@ fun VisualizerCard(
                                 Spacer(modifier = Modifier.size(8.dp))
                                 Text("DISPENSE COLORS", fontSize = 16.sp, fontWeight = FontWeight.Black)
                             } else {
-                                Text("Please Refill", fontSize = 18.sp, fontWeight = FontWeight.Bold)
+                                // Show specific error message
+                                val errorMessage = if (needsRefill) "Please Refill" else "Not Connected"
+                                Text(errorMessage, fontSize = 18.sp, fontWeight = FontWeight.Bold)
                             }
                         }
                     }

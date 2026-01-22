@@ -24,6 +24,7 @@ import com.example.mejustmix.services.BackupService
 import com.example.mejustmix.services.ColorMixingService
 import com.example.mejustmix.services.FluidNCStatus
 import com.example.mejustmix.services.KubelkaMunkColorMixing
+import com.example.mejustmix.data.PrinterRepository
 import com.example.mejustmix.ui.SettingsUiState 
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -96,6 +97,10 @@ class MixViewModel @JvmOverloads constructor(
 
     private val _fluidNCStatus = MutableStateFlow<FluidNCStatus?>(null)
     val fluidNCStatus = _fluidNCStatus.asStateFlow()
+    
+    // Track if user has interacted with the app (to avoid false "Not Connected" on startup)
+    private val _hasInteracted = MutableStateFlow(false)
+    val hasInteracted = _hasInteracted.asStateFlow()
 
     private val _retraction = MutableStateFlow(15f)
     val retraction = _retraction.asStateFlow()
@@ -177,6 +182,7 @@ class MixViewModel @JvmOverloads constructor(
     }
     
     fun setColor(newColor: Color) {
+        _hasInteracted.value = true  // Mark that user has interacted
         if (_color.value != newColor) {
             // Save current state to undo stack before changing
             val currentState = HistoryItem(_color.value, _paintMix.value)
@@ -201,6 +207,7 @@ class MixViewModel @JvmOverloads constructor(
     }
     
     fun setTotalVolume(volume: Float) {
+        _hasInteracted.value = true  // Mark that user has interacted
         _totalVolume.value = volume.coerceIn(0.1f, 100f)
     }
 
@@ -289,17 +296,50 @@ class MixViewModel @JvmOverloads constructor(
     }
 
     fun isMixPossible(volumeToCheck: Float = _totalVolume.value): Boolean {
+        // If user hasn't interacted yet, allow dispensing (optimistic default)
+        if (!_hasInteracted.value) {
+            return volumeToCheck > 0f && !_isSending.value
+        }
+        
+        // After first interaction, do full checks:
         // Basic Check: Is fluidNC connected OR "Bypass" enabled?
         // AND total volume > 0
         // AND not currently sending
+        // AND pumps have sufficient volume
         val status = _fluidNCStatus.value?.state
         // Valid FluidNC states: "Connected", "Idle", "Run", "Jog", "Hold"
         val connected = status == "Idle" || 
                        status == "Connected" ||
                        status == "Run" ||
                        settingsViewModel.uiState.value.bypassConnectionCheck
+        
+        val pumpsHaveVolume = !needsRefill(volumeToCheck)
                        
-        return connected && volumeToCheck > 0f && !_isSending.value
+        return connected && volumeToCheck > 0f && !_isSending.value && pumpsHaveVolume
+    }
+    
+    /**
+     * Check if any pumps need refilling based on the current mix and requested volume.
+     * Returns true if any pump doesn't have enough volume for the current mix.
+     */
+    fun needsRefill(volumeToCheck: Float = _totalVolume.value): Boolean {
+        val mix = _paintMix.value
+        val pumps = settingsViewModel.uiState.value.pumps
+        
+        // Check each pump's required volume against available volume
+        val requiredVolumes = listOf(
+            mix.cyan * volumeToCheck,
+            mix.magenta * volumeToCheck,
+            mix.yellow * volumeToCheck,
+            mix.black * volumeToCheck,
+            mix.white * volumeToCheck
+        )
+        
+        return pumps.indices.any { index ->
+            val required = requiredVolumes.getOrNull(index) ?: 0f
+            val available = pumps.getOrNull(index)?.currentVolumeMl ?: 0f
+            required > available
+        }
     }
 
     fun updateConnectionStatus(status: FluidNCStatus?) {
@@ -324,6 +364,7 @@ class MixViewModel @JvmOverloads constructor(
     }
 
     fun sendMix() {
+        _hasInteracted.value = true  // Mark that user has interacted
         viewModelScope.launch(Dispatchers.Default) {
             try {
                 addToTerminalHistory(">> DEBUG: Dispense Button Clicked")

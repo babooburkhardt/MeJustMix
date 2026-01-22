@@ -304,6 +304,9 @@ fun SettingsModal(
                 },
                 onPrimeToPulseHome = {
                     settingsViewModel.primePumpToHome(index)
+                },
+                onSaveAngle = { angle, drift ->
+                    settingsViewModel.savePumpAngle(index, angle, drift)
                 }
             )
         } else {
@@ -771,34 +774,10 @@ fun SettingsModal(
                                 )
                             }
                             
-                            // --- Simul-Mix (Parallel Dispensing) ---
-                            HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp))
-                            
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Column(modifier = Modifier.weight(1f)) {
-                                    Text(
-                                        "🚀 Simul-Mix (Parallel Dispensing)",
-                                        fontWeight = FontWeight.SemiBold,
-                                        style = MaterialTheme.typography.bodyMedium
-                                    )
-                                    Text(
-                                        "Dispense all colors simultaneously. Disables pulse compensation.",
-                                        style = MaterialTheme.typography.bodySmall,
-                                        color = Color.Gray
-                                    )
-                                }
-                                Switch(
-                                    checked = uiState.useSimulMix,
-                                    onCheckedChange = { settingsViewModel.setUseSimulMix(it) }
-                                )
-                            }
+
                             
                             // --- Pulse Compensation Geometry ---
-                            if (uiState.usePulseMode && !uiState.useSimulMix) {
+                            if (uiState.usePulseMode) {
                                 HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
                                 
                                 Text(
@@ -941,37 +920,6 @@ fun SettingsModal(
                                                 }
                                             )
                                         }
-                                        
-                                        // --- FluidNC Speed Limits ---
-                                        HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
-                                        
-                                        Text(
-                                            "⚙️ FluidNC Speed Limits",
-                                            fontWeight = FontWeight.SemiBold,
-                                            style = MaterialTheme.typography.bodyMedium
-                                        )
-                                        Text(
-                                            "Configure max speed for \"you can go faster\" mode",
-                                            style = MaterialTheme.typography.bodySmall,
-                                            color = Color.Gray
-                                        )
-                                        
-                                        OutlinedTextField(
-                                            value = String.format("%.0f", uiState.maxFeedRate),
-                                            onValueChange = { 
-                                                it.toFloatOrNull()?.let { v -> settingsViewModel.setMaxFeedRate(v) }
-                                            },
-                                            label = { Text("Max Feed Rate (mm/min)") },
-                                            modifier = Modifier.fillMaxWidth(),
-                                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                                            singleLine = true,
-                                            supportingText = {
-                                                Text(
-                                                    "Range: 1000-20000 mm/min. Sets FluidNC \$11X limit.",
-                                                    style = MaterialTheme.typography.bodySmall
-                                                )
-                                            }
-                                        )
                                     }
                                 }
                             }
@@ -1141,6 +1089,37 @@ fun SettingsModal(
                                     )
                                 }
                             }
+
+                            // --- FluidNC Speed Limits ---
+                            HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
+                            
+                            Text(
+                                "⚙️ FluidNC Speed Limits",
+                                fontWeight = FontWeight.SemiBold,
+                                style = MaterialTheme.typography.bodyMedium
+                            )
+                            Text(
+                                "Configure max speed for \"you can go faster\" mode",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = Color.Gray
+                            )
+                            
+                            OutlinedTextField(
+                                value = String.format("%.0f", uiState.maxFeedRate),
+                                onValueChange = { 
+                                    it.toFloatOrNull()?.let { v -> settingsViewModel.setMaxFeedRate(v) }
+                                },
+                                label = { Text("Max Feed Rate (mm/min)") },
+                                modifier = Modifier.fillMaxWidth(),
+                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                                singleLine = true,
+                                supportingText = {
+                                    Text(
+                                        "Range: 1000-20000 mm/min. Sets FluidNC \$11X limit.",
+                                        style = MaterialTheme.typography.bodySmall
+                                    )
+                                }
+                            )
                         }
                     }
                 }

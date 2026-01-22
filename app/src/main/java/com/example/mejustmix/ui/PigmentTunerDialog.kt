@@ -176,13 +176,14 @@ fun PigmentTunerDialog(
                         
                         val flowRate = settingsState.flowRate.toFloatOrNull() ?: 2.0f
 
-                        val gcode = GCodeGenerator.generateMixingScript(
+                        val result = GCodeGenerator.generateMixingScript(
                             mix = normalizedMix,
                             totalVolumeMl = 5.0f,
                             retractionSteps = 15f,
                             pumps = settingsState.pumps, 
                             flowRateMlPerSec = flowRate
                         )
+                        val gcode = result.first
                         mixViewModel.sendRawGCode(gcode)
                     },
                     modifier = Modifier.fillMaxWidth(),

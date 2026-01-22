@@ -13,6 +13,7 @@ import com.example.mejustmix.services.KSColor
 import com.example.mejustmix.services.KSPigmentDatabase
 import com.example.mejustmix.services.KubelkaMunkColorMixing
 import com.example.mejustmix.services.UnifiedBLEScanner
+import com.example.mejustmix.data.PrinterRepository
 import com.example.mejustmix.utils.PulseModeCalculator
 import com.example.mejustmix.services.SpectralSensorManager
 import com.google.gson.Gson
@@ -553,20 +554,24 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
     fun savePumpAngle(pumpIndex: Int, observedAngle: Float, driftDegrees: Float?) {
         val pump = _uiState.value.pumps.getOrNull(pumpIndex) ?: return
         
+        // Safer access to potentially null fields (from old JSON files)
+        val safeDriftHistory = pump.driftHistory ?: emptyList()
+        val safeDriftCompensation = pump.driftCompensation ?: 0f
+        
         // Calculate offset from angle using geometry utils
         val stepsToHome = com.example.mejustmix.utils.PulseGeometryUtils.stepsToNextBoundary(observedAngle)
         
         // Update drift history if we have drift data
         val updatedDriftHistory = if (driftDegrees != null) {
             // Keep last 10 drift measurements
-            (pump.driftHistory + driftDegrees).takeLast(10)
+            (safeDriftHistory + driftDegrees).takeLast(10)
         } else {
-            pump.driftHistory
+            safeDriftHistory
         }
         
         // Analyze drift pattern for auto-compensation
         val driftAnalysis = com.example.mejustmix.utils.PulseGeometryUtils.analyzeDriftPattern(updatedDriftHistory)
-        val newCompensation = driftAnalysis.recommendedCompensation ?: pump.driftCompensation
+        val newCompensation = driftAnalysis.recommendedCompensation ?: safeDriftCompensation
         
         _uiState.update { state ->
             val updatedPumps = state.pumps.toMutableList()

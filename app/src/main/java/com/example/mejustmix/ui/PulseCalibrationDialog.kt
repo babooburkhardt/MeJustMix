@@ -9,6 +9,8 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -35,8 +37,8 @@ data class CalibrationRun(
 )
 
 /**
- * Simplified pulse calibration dialog - just angle-based position input.
- * No priming step required.
+ * Pulse calibration dialog - visual scroll wheel for position input.
+ * Single step: just set the roller position, no priming required.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -46,19 +48,73 @@ fun PulseCalibrationDialog(
     onDismiss: () -> Unit,
     onSave: (mlPerPulse: Float) -> Unit,
     onDispensePulses: (pulseCount: Int) -> Unit,
-    onPrimeToPulseHome: () -> Unit
+    onPrimeToPulseHome: () -> Unit,
+    onSaveAngle: ((angle: Float, drift: Float?) -> Unit)? = null
 ) {
-    // Redirect to the new AngleHomingDialog
-    // This maintains backward compatibility while using the new angle-based approach
-    AngleHomingDialog(
-        pump = pump,
-        onDismiss = onDismiss,
-        onSaveAngle = { angle, drift ->
-            // This will be handled by SettingsViewModel.savePumpAngle
-            // For now, just close the dialog
-            onDismiss()
-        }
+    // Initialize from last known angle if available, otherwise use offset
+    // This ensures the GUI matches the actual known roller position
+    var trackedOffsetSteps by remember { 
+        mutableStateOf(
+            if (pump.lastKnownAngle != null) {
+                val stepsPerPulse = PulseModeCalculator.calculateStepsPerPulse(1.8f, 4f, 3)
+                (pump.lastKnownAngle / 360f) * stepsPerPulse
+            } else {
+                pump.pulseHomeOffset
+            }
+        ) 
+    }
+    
+    val stepsPerPulse = PulseModeCalculator.calculateStepsPerPulse(
+        stepAngle = 1.8f,
+        gearReduction = 4f,
+        rollerCount = 3
     )
+
+    Dialog(
+        onDismissRequest = onDismiss,
+        properties = DialogProperties(usePlatformDefaultWidth = false)
+    ) {
+        Card(modifier = Modifier.fillMaxWidth(0.95f).padding(16.dp)) {
+            Column(
+                modifier = Modifier.padding(20.dp).verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(16.dp)
+            ) {
+                // Header
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column {
+                        Text("Pump Homing", style = MaterialTheme.typography.titleLarge)
+                        Text(pump.name, style = MaterialTheme.typography.bodyMedium, color = Color.Gray)
+                    }
+                    IconButton(onClick = onDismiss) {
+                        Icon(Icons.Default.Close, "Close")
+                    }
+                }
+                
+                HorizontalDivider()
+                
+                // Single step visual homing with save
+                Step1VisualHomingSingleStep(
+                    pump = pump,
+                    stepsPerPulse = stepsPerPulse,
+                    trackedOffsetSteps = trackedOffsetSteps,
+                    onOffsetChange = { trackedOffsetSteps = it },
+                    onSave = {
+                        // Save the offset and close
+                        onSaveAngle?.invoke(
+                            com.example.mejustmix.utils.PulseGeometryUtils.ANGLE_DISENGAGED - 
+                            (trackedOffsetSteps / stepsPerPulse * 120f),  // Convert steps to angle
+                            null
+                        )
+                        onDismiss()
+                    }
+                )
+            }
+        }
+    }
 }
 
 /**
@@ -277,6 +333,58 @@ fun Step1VisualHoming(
     }
 }
 
+/**
+ * Single-step visual homing - saves directly without priming.
+ */
+@Composable
+fun Step1VisualHomingSingleStep(
+    pump: PumpConfig,
+    stepsPerPulse: Float,
+    trackedOffsetSteps: Float,
+    onOffsetChange: (Float) -> Unit,
+    onSave: () -> Unit
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        Text("Set Roller Position", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+        
+        Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.3f))) {
+            Column(modifier = Modifier.padding(12.dp)) {
+                Text("Align scroll wheel with where the rollers currently are.", fontWeight = FontWeight.Bold)
+                Spacer(Modifier.height(4.dp))
+                Text("(The bottom is where the tubes enter and exit the pump)", style = MaterialTheme.typography.bodySmall, color = Color.Gray)
+            }
+        }
+        
+        CompactPulseHomeWheel(
+            pumpColor = Color(pump.colorArgb),
+            stepsPerPulse = stepsPerPulse,
+            currentOffsetSteps = trackedOffsetSteps,
+            onOffsetChange = onOffsetChange,
+            modifier = Modifier.fillMaxWidth()
+        )
+        
+        // Reminder tip
+        Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.tertiaryContainer.copy(alpha = 0.3f))) {
+            Row(modifier = Modifier.padding(12.dp), verticalAlignment = Alignment.Top) {
+                Icon(Icons.Default.Info, null, tint = MaterialTheme.colorScheme.tertiary, modifier = Modifier.size(20.dp))
+                Spacer(Modifier.width(8.dp))
+                Text(
+                    "💡 If pulses return, come back and update this position!",
+                    style = MaterialTheme.typography.bodySmall
+                )
+            }
+        }
+        
+        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+            Button(onClick = onSave) {
+                Icon(Icons.Default.Check, null, modifier = Modifier.size(18.dp))
+                Spacer(Modifier.width(4.dp))
+                Text("Save Position")
+            }
+        }
+    }
+}
+
 @Composable
 fun Step2Prime(
     pump: PumpConfig,
@@ -350,7 +458,7 @@ fun Step2Prime(
         
         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
             TextButton(onClick = onBack) {
-                Icon(Icons.Default.ArrowBack, null, modifier = Modifier.size(18.dp))
+                Icon(Icons.AutoMirrored.Filled.ArrowBack, null, modifier = Modifier.size(18.dp))
                 Spacer(Modifier.width(4.dp))
                 Text("Back")
             }
@@ -443,14 +551,14 @@ fun Step3Dispense(
         
         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
             TextButton(onClick = onBack, enabled = !isDispensing) {
-                Icon(Icons.Default.ArrowBack, null, modifier = Modifier.size(18.dp))
+                Icon(Icons.AutoMirrored.Filled.ArrowBack, null, modifier = Modifier.size(18.dp))
                 Spacer(Modifier.width(4.dp))
                 Text("Back")
             }
             Button(onClick = onNext, enabled = hasDispensed && !isDispensing) {
                 Text("Next: Measure")
                 Spacer(Modifier.width(4.dp))
-                Icon(Icons.Default.ArrowForward, null, modifier = Modifier.size(18.dp))
+                Icon(Icons.AutoMirrored.Filled.ArrowForward, null, modifier = Modifier.size(18.dp))
             }
         }
     }
@@ -609,7 +717,7 @@ fun Step4Measure(
         
         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Start) {
             TextButton(onClick = onBack) {
-                Icon(Icons.Default.ArrowBack, null, modifier = Modifier.size(18.dp))
+                Icon(Icons.AutoMirrored.Filled.ArrowBack, null, modifier = Modifier.size(18.dp))
                 Spacer(Modifier.width(4.dp))
                 Text("Back")
             }

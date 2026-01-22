@@ -2,6 +2,7 @@ package com.example.mejustmix.utils
 
 import kotlin.math.PI
 import kotlin.math.roundToInt
+import java.util.Locale
 
 /**
  * Calculates velocity compensation profiles for peristaltic pump pulse damping.
@@ -150,47 +151,52 @@ object PulseCompensationCalculator {
         totalSteps: Float,
         stepsPerPillow: Float,
         baseFeedRate: Int,
-        profile: PulseProfile
+        profile: PulseProfile,
+        initialPhaseSteps: Float = 0f
     ): List<GCodeSegment> {
         if (totalSteps <= 0 || stepsPerPillow <= 0) {
             return emptyList()
         }
         
-        val completePillows = (totalSteps / stepsPerPillow).toInt()
-        val remainderSteps = totalSteps % stepsPerPillow
-        
         val segments = mutableListOf<GCodeSegment>()
+        var remainingToDispense = totalSteps
+        var currentPhase = initialPhaseSteps % stepsPerPillow
         
-        // Add segments for each complete pillow
-        repeat(completePillows) { pillowIndex ->
-            segments.addAll(generatePillowSegments(stepsPerPillow, baseFeedRate, profile))
-        }
+        val taperSteps = stepsPerPillow * profile.taperFraction
+        val fullFlowSteps = stepsPerPillow * profile.nominalSpeedFraction
+        val exitStart = stepsPerPillow - taperSteps
+        val fastFeed = (baseFeedRate * profile.taperSpeedMultiplier).toInt()
         
-        // Handle remainder (partial pillow at the end)
-        if (remainderSteps > 0.01f) {
-            // For partial pillows, determine which zone we're in
-            val taperSteps = stepsPerPillow * profile.taperFraction
-            
-            when {
-                remainderSteps <= taperSteps -> {
-                    // Still in entry taper
-                    val fastFeed = (baseFeedRate * profile.taperSpeedMultiplier).toInt()
-                    segments.add(GCodeSegment(remainderSteps, fastFeed, "Partial entry taper"))
+        while (remainingToDispense > 0.01f) {
+            // Determine current zone and steps remaining in it
+            val (zoneStepsRemaining, zoneFeed, zoneDesc) = when {
+                currentPhase < taperSteps -> {
+                    // Entry Taper
+                    Triple(taperSteps - currentPhase, fastFeed, "Entry taper")
                 }
-                remainderSteps <= stepsPerPillow - taperSteps -> {
-                    // Entry taper + partial full flow
-                    val fastFeed = (baseFeedRate * profile.taperSpeedMultiplier).toInt()
-                    segments.add(GCodeSegment(taperSteps, fastFeed, "Entry taper"))
-                    segments.add(GCodeSegment(remainderSteps - taperSteps, baseFeedRate, "Partial full flow"))
+                currentPhase < exitStart -> {
+                    // Full Flow
+                    Triple(exitStart - currentPhase, baseFeedRate, "Full flow")
                 }
                 else -> {
-                    // Entry taper + full flow + partial exit taper
-                    val fastFeed = (baseFeedRate * profile.taperSpeedMultiplier).toInt()
-                    val nominalSteps = stepsPerPillow * profile.nominalSpeedFraction
-                    segments.add(GCodeSegment(taperSteps, fastFeed, "Entry taper"))
-                    segments.add(GCodeSegment(nominalSteps, baseFeedRate, "Full flow"))
-                    segments.add(GCodeSegment(remainderSteps - taperSteps - nominalSteps, fastFeed, "Partial exit taper"))
+                    // Exit Taper
+                    Triple(stepsPerPillow - currentPhase, fastFeed, "Exit taper")
                 }
+            }
+            
+            // How much can we dispense in this zone?
+            val stepsToDo = remainingToDispense.coerceAtMost(zoneStepsRemaining)
+            
+            segments.add(GCodeSegment(stepsToDo, zoneFeed, zoneDesc))
+            
+            remainingToDispense -= stepsToDo
+            currentPhase = (currentPhase + stepsToDo) % stepsPerPillow
+            
+            // Floating point correction: if we just finished a zone exactly, force phase alignment
+            // to avoid getting stuck in microscopic remnants of zones
+            if (kotlin.math.abs(remainingToDispense - 0f) > 0.01f && 
+                kotlin.math.abs(zoneStepsRemaining - stepsToDo) < 0.01f) {
+                 // We finished the zone exactly, moving to next zone logic automatically via loop
             }
         }
         
@@ -229,8 +235,8 @@ object PulseCompensationCalculator {
      */
     fun formatProfileSummary(profile: PulseProfile): String {
         val taperPercent = (profile.taperFraction * 100).roundToInt()
-        return "Taper: ${taperPercent}% (${String.format("%.1f", profile.taperLengthMm)}mm), " +
-               "Speed Boost: ${String.format("%.1f", profile.taperSpeedMultiplier)}x, " +
-               "Vol/Pillow: ${String.format("%.3f", profile.volumePerPillowMl)}mL"
+        return "Taper: ${taperPercent}% (${String.format(Locale.US, "%.1f", profile.taperLengthMm)}mm), " +
+               "Speed Boost: ${String.format(Locale.US, "%.1f", profile.taperSpeedMultiplier)}x, " +
+               "Vol/Pillow: ${String.format(Locale.US, "%.3f", profile.volumePerPillowMl)}mL"
     }
 }

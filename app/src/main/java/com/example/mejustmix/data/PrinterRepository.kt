@@ -1,6 +1,7 @@
 package com.example.mejustmix.data
 
 import android.content.Context
+import java.util.Locale
 import com.example.mejustmix.services.FluidNCService
 import com.example.mejustmix.services.FluidNCBLEManager
 import com.example.mejustmix.services.FluidNCStatus
@@ -50,6 +51,11 @@ class PrinterRepository private constructor(context: Context) {
     
     private val _isSending = MutableStateFlow(false)
     val isSending = _isSending.asStateFlow()
+    
+    // Phase Tracking for Pulse Compensation
+    // Maps pump axis (e.g., "X", "Y") or name to its current phase offset in steps [0, stepsPerPillow)
+    // This ensures smooth velocity transitions between consecutive dispense operations
+    private val _pumpPhaseSteps = mutableMapOf<String, Float>()
 
     /**
      * Connect to a machine using its profile.
@@ -140,33 +146,17 @@ class PrinterRepository private constructor(context: Context) {
             // Generate G-code
             val gcode: List<String>
             val actualVolume: Float
+            val flowRateMlPerSec = settings.flowRate.toFloatOrNull() ?: 2.0f
             
-                // Check for Simul-Mix (Parallel Dispensing)
-                if (settings.useSimulMix) {
-                    gcode = GCodeGenerator.generateParallelMixingScript(
-                        mix = mix,
-                        totalVolumeMl = volume,
-                        retractionSteps = settings.retractionSteps.toFloatOrNull() ?: 15f,
-                        pumps = settings.pumps,
-                        flowRateMlPerSec = settings.flowRate.toFloatOrNull() ?: 2.0f,
-                        maxFeedRate = settings.maxFeedRate
-                    )
-                    addToHistory(">> SIMUL-MIX: Parallel dispensing enabled")
-                    actualVolume = volume
-                } else if (settings.usePulseMode) {
+                // Check for Pulse Mode
+                if (settings.usePulseMode) {
                     // Calculate pulse compensation profile from geometry settings
-                    val flowRateMlPerSec = settings.flowRate.toFloatOrNull() ?: 2.0f
-                    val avgCalibration = settings.pumps.map { it.calibration.toFloatOrNull() ?: 100f }.average().toFloat()
-                    val baseFeedRate = (flowRateMlPerSec * avgCalibration * 60).toInt() // Convert to mm/min
+                    val profile = calculatePulseProfile(settings)
                     
-                    val profile = com.example.mejustmix.utils.PulseCompensationCalculator.calculateProfile(
-                        pillowLengthMm = settings.pillowLengthMm,
-                        fullDiameterSectionMm = settings.fullDiameterSectionMm,
-                        tubeInnerDiameterMm = settings.tubeInnerDiameterMm,
-                        baseFeedRate = baseFeedRate  // Use actual flow rate for accurate acceleration calculation
-                    )
+                    addToHistory(">> DEBUG: Pulse Mode - C:${mix.cyan} M:${mix.magenta} Y:${mix.yellow} K:${mix.black} W:${mix.white}, Vol:${volume}mL")
+                    addToHistory(">> DEBUG: Profile - Taper:${(profile.taperFraction * 100).toInt()}%, Boost:${String.format(Locale.US, "%.1f", profile.taperSpeedMultiplier)}x")
                     
-                    gcode = GCodeGenerator.generateMixingScript(
+                    val result = GCodeGenerator.generateMixingScript(
                         mix = mix,
                         totalVolumeMl = volume,
                         retractionSteps = settings.retractionSteps.toFloatOrNull() ?: 15f,
@@ -175,21 +165,23 @@ class PrinterRepository private constructor(context: Context) {
                         usePulseMode = true,
                         pulseMinimum = settings.pulseMinimum,
                         pulseProfile = profile,
+                        pumpPhases = _pumpPhaseSteps,
                         useDynamicAcceleration = settings.useDynamicAcceleration,
                         taperAcceleration = settings.taperAcceleration,
                         nominalAcceleration = settings.nominalAcceleration,
                         maxFeedRate = settings.maxFeedRate
                     )
+                    gcode = result.first
+                    _pumpPhaseSteps.putAll(result.second)
                     
                     // For pulse mode, we need to calculate actual volume from the profile
+                    // This is approximate since we're using compensated segments
+                    actualVolume = volume
+                    addToHistory(">> PULSE MODE (Compensated): Taper ${(profile.taperFraction * 100).toInt()}%, Speed Boost ${String.format("%.1f", profile.taperSpeedMultiplier)}x")
 
-                
-                // For pulse mode, we need to calculate actual volume from the profile
-                // This is approximate since we're using compensated segments
-                actualVolume = volume
-                addToHistory(">> PULSE MODE (Compensated): Taper ${(profile.taperFraction * 100).toInt()}%, Speed Boost ${String.format("%.1f", profile.taperSpeedMultiplier)}x")
+
             } else {
-                gcode = GCodeGenerator.generateMixingScript(
+                val result = GCodeGenerator.generateMixingScript(
                     mix = mix,
                     totalVolumeMl = volume,
                     retractionSteps = settings.retractionSteps.toFloatOrNull() ?: 15f,
@@ -197,6 +189,8 @@ class PrinterRepository private constructor(context: Context) {
                     flowRateMlPerSec = settings.flowRate.toFloatOrNull() ?: 2.0f,
                     usePulseMode = false
                 )
+                gcode = result.first
+                // No phase update needed for standard mode
                 actualVolume = volume
             }
             
@@ -220,12 +214,28 @@ class PrinterRepository private constructor(context: Context) {
             val stepsPerMl = pump?.calibration?.toFloatOrNull() ?: 100f
             val flowRate = settings.flowRate.toFloatOrNull() ?: 2.0f
             
-            val primeGcode = GCodeGenerator.generatePrimeOnlyScript(
-                axis = axis,
-                volumeMl = amount,
-                stepsPerMl = stepsPerMl,
-                flowRateMlPerSec = flowRate
-            )
+            val modeStr = if(settings.usePulseMode) "Compensated" else "Standard"
+            addToHistory(">> Priming ${pump?.name} ($modeStr)...")
+
+            val primeGcode = if (settings.usePulseMode) {
+                val initialPhase = _pumpPhaseSteps[pump!!.name] ?: 0f
+                val result = GCodeGenerator.generateCompensatedPrimeScript(
+                    pump = pump,
+                    volumeMl = amount,
+                    flowRateMlPerSec = flowRate,
+                    profile = calculatePulseProfile(settings),
+                    initialPhaseSteps = initialPhase
+                )
+                _pumpPhaseSteps[pump.name] = result.second
+                result.first
+            } else {
+                 GCodeGenerator.generatePrimeOnlyScript(
+                    axis = axis,
+                    volumeMl = amount,
+                    stepsPerMl = stepsPerMl,
+                    flowRateMlPerSec = flowRate
+                )
+            }
             sendGCodeCommands(primeGcode)
         } catch (e: Exception) {
             addToHistory(">> Error priming: ${e.message}")
@@ -259,11 +269,26 @@ class PrinterRepository private constructor(context: Context) {
              val flowRate = settings.flowRate.toFloatOrNull() ?: 2.0f
              val testPump = pump.copy(stepsPerPulse = stepsPerPulse)
              
-             val gcode = GCodeGenerator.generatePulsePrimeScript(
-                 pump = testPump,
-                 pulseCount = pulseCount,
-                 flowRateMlPerSec = flowRate
-             )
+             val gcode = if (settings.usePulseMode) {
+                 val initialPhase = _pumpPhaseSteps[pump.name] ?: 0f
+                 val result = GCodeGenerator.generateCompensatedPulseScript(
+                     pump = testPump,
+                     pulseCount = pulseCount,
+                     flowRateMlPerSec = flowRate,
+                     profile = calculatePulseProfile(settings),
+                     initialPhaseSteps = initialPhase
+                 )
+                 _pumpPhaseSteps[pump.name] = result.second
+                 result.first
+             } else {
+                 val cmd = GCodeGenerator.generatePulsePrimeScript(
+                     pump = testPump,
+                     pulseCount = pulseCount,
+                     flowRateMlPerSec = flowRate
+                 )
+                 // Note: generatePulsePrimeScript now returns List<String> (signature unchanged for that method)
+                 cmd
+             }
              addToHistory(">> Dispensing $pulseCount pulses")
              fluidNCService?.sendMultiple(gcode)
         } catch (e: Exception) {
@@ -306,6 +331,8 @@ class PrinterRepository private constructor(context: Context) {
             
             if (gcode.isNotEmpty()) {
                 sendGCodeCommands(gcode)
+                // Homing resets the physical phase to 0
+                _pumpPhaseSteps[pump.name] = 0f
                 addToHistory(">> Homed ${pump.name}")
             } else {
                 addToHistory(">> ${pump.name} already home")
@@ -352,5 +379,20 @@ class PrinterRepository private constructor(context: Context) {
     sealed class DispenseResult {
         data class Success(val actualVolume: Float) : DispenseResult()
         data class Error(val message: String) : DispenseResult()
+    }
+    
+    // --- Helper Methods ---
+    
+    private fun calculatePulseProfile(settings: SettingsUiState): com.example.mejustmix.utils.PulseCompensationCalculator.PulseProfile {
+        val flowRateMlPerSec = settings.flowRate.toFloatOrNull() ?: 2.0f
+        val avgCalibration = settings.pumps.map { it.calibration.toFloatOrNull() ?: 100f }.average().toFloat()
+        val baseFeedRate = (flowRateMlPerSec * avgCalibration * 60).toInt()
+        
+        return com.example.mejustmix.utils.PulseCompensationCalculator.calculateProfile(
+            pillowLengthMm = settings.pillowLengthMm,
+            fullDiameterSectionMm = settings.fullDiameterSectionMm,
+            tubeInnerDiameterMm = settings.tubeInnerDiameterMm,
+            baseFeedRate = baseFeedRate
+        )
     }
 }
