@@ -1101,13 +1101,13 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
      * Save geometry measurements from wizard.
      * Saves both global geometry (tube properties) and per-pump phase offset (timing).
      */
-    // Calibration Session State
-    private val fullDiameterMeasurements = mutableListOf<Float>()
+    // Calibration Session State (Key = Pump Index, Value = Measurement)
+    private val fullDiameterMeasurements = mutableMapOf<Int, Float>()
 
     /**
      * Save geometry measurements from wizard.
      * Saves both global geometry (tube properties) and per-pump phase offset (timing).
-     * NOW AVERAGES global geometry across multiple pump measurements.
+     * NOW AVERAGES global geometry across multiple pump measurements (Updating existing).
      */
     fun saveGeometryFromWizard(
         pumpIndex: Int,
@@ -1115,9 +1115,9 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
         taperLengthMm: Float,
         fullDiameterMm: Float
     ) {
-        // 1. Accumulate Measurement
-        fullDiameterMeasurements.add(fullDiameterMm)
-        val avgFullDiameter = fullDiameterMeasurements.average().toFloat()
+        // 1. Accumulate/Update Measurement for this Pump
+        fullDiameterMeasurements[pumpIndex] = fullDiameterMm
+        val avgFullDiameter = fullDiameterMeasurements.values.average().toFloat()
 
         // 2. Save GLOBAL geometry (Averaged)
         _uiState.update { 
