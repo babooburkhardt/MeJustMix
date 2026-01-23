@@ -940,19 +940,54 @@ fun SettingsModal(
                                         }
                                         
                                         // Geometry Wizard Button
+                                        var showPumpSelector by remember { mutableStateOf(false) }
                                         var showGeometryWizard by remember { mutableStateOf(false) }
                                         var wizardPumpIndex by remember { mutableStateOf(0) }
                                         
                                         OutlinedButton(
-                                            onClick = { 
-                                                showGeometryWizard = true
-                                                wizardPumpIndex = 0 // Default to first pump
-                                            },
+                                            onClick = { showPumpSelector = true },
                                             modifier = Modifier.fillMaxWidth()
                                         ) {
                                             Icon(Icons.Default.Settings, null)
                                             Spacer(modifier = Modifier.width(8.dp))
                                             Text("📐 Launch Geometry Wizard")
+                                        }
+                                        
+                                        // Pump selector dialog
+                                        if (showPumpSelector) {
+                                            AlertDialog(
+                                                onDismissRequest = { showPumpSelector = false },
+                                                title = { Text("Select Pump to Calibrate") },
+                                                text = {
+                                                    Column {
+                                                        Text(
+                                                            "Choose which pump to use for geometry calibration:",
+                                                            style = MaterialTheme.typography.bodyMedium,
+                                                            modifier = Modifier.padding(bottom = 12.dp)
+                                                        )
+                                                        uiState.pumps.forEachIndexed { index, pump ->
+                                                            OutlinedButton(
+                                                                onClick = {
+                                                                    wizardPumpIndex = index
+                                                                    showPumpSelector = false
+                                                                    showGeometryWizard = true
+                                                                },
+                                                                modifier = Modifier
+                                                                    .fillMaxWidth()
+                                                                    .padding(vertical = 4.dp)
+                                                            ) {
+                                                                Text(pump.name)
+                                                            }
+                                                        }
+                                                    }
+                                                },
+                                                confirmButton = {},
+                                                dismissButton = {
+                                                    TextButton(onClick = { showPumpSelector = false }) {
+                                                        Text("Cancel")
+                                                    }
+                                                }
+                                            )
                                         }
                                         
                                         if (showGeometryWizard) {
@@ -963,8 +998,13 @@ fun SettingsModal(
                                                 onJog = { steps ->
                                                     settingsViewModel.jogPumpWithBacklash(wizardPumpIndex, steps)
                                                 },
-                                                onSave = { taperLengthMm, fullDiameterMm ->
-                                                    settingsViewModel.saveGeometryFromWizard(taperLengthMm, fullDiameterMm)
+                                                onSave = { taperStartSteps, taperLengthMm, fullDiameterMm ->
+                                                    settingsViewModel.saveGeometryFromWizard(
+                                                        wizardPumpIndex,
+                                                        taperStartSteps,
+                                                        taperLengthMm,
+                                                        fullDiameterMm
+                                                    )
                                                 },
                                                 onDismiss = { showGeometryWizard = false }
                                             )

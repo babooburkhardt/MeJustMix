@@ -35,7 +35,7 @@ fun PulseGeometryWizard(
     pumpIndex: Int,
     pillowLengthMm: Float,
     onJog: (steps: Float) -> Unit,
-    onSave: (taperLengthMm: Float, fullDiameterMm: Float) -> Unit,
+    onSave: (taperStartSteps: Float, taperLengthMm: Float, fullDiameterMm: Float) -> Unit,
     onDismiss: () -> Unit
 ) {
     var currentStep by remember { mutableStateOf(0) }
@@ -162,7 +162,7 @@ fun PulseGeometryWizard(
                             val taperLengthSteps = abs((taperEndSteps ?: 0f) - (taperStartSteps ?: 0f))
                             val taperLengthMm = stepsToMm(taperLengthSteps)
                             val fullDiameterMm = pillowLengthMm - (2f * taperLengthMm)
-                            onSave(taperLengthMm, fullDiameterMm.coerceAtLeast(0f))
+                            onSave(taperStartSteps ?: 0f, taperLengthMm, fullDiameterMm.coerceAtLeast(0f))
                             onDismiss()
                         },
                         onBack = { currentStep = 2 }

@@ -1099,14 +1099,32 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
     
     /**
      * Save geometry measurements from wizard.
-     * Calculates and updates fullDiameterSectionMm based on measured taper points.
+     * Saves both global geometry (tube properties) and per-pump phase offset (timing).
      */
-    fun saveGeometryFromWizard(taperLengthMm: Float, fullDiameterMm: Float) {
+    fun saveGeometryFromWizard(
+        pumpIndex: Int,
+        taperStartSteps: Float,
+        taperLengthMm: Float,
+        fullDiameterMm: Float
+    ) {
+        // Save global geometry (describes the tube)
         _uiState.update { 
             it.copy(fullDiameterSectionMm = fullDiameterMm.coerceAtLeast(0f)) 
         }
+        
+        // Save per-pump phase offset (when the taper occurs for THIS pump)
+        // The taper start position becomes the new phase reference
+        val pump = _uiState.value.pumps.getOrNull(pumpIndex) ?: return
+        val updatedPump = pump.copy(pulseHomeOffset = -taperStartSteps)
+        
+        _uiState.update { state ->
+            val newPumps = state.pumps.toMutableList()
+            newPumps[pumpIndex] = updatedPump
+            state.copy(pumps = newPumps)
+        }
+        
         saveSettings()
-        showToast("Geometry calibrated: ${String.format("%.1f", fullDiameterMm)}mm full diameter")
+        showToast("${pump.name}: Geometry calibrated (${String.format("%.1f", fullDiameterMm)}mm)")
     }
 }
 
