@@ -122,12 +122,15 @@ class SpectralSensorManager(private val context: Context) {
         
         // If we didn't get enough samples for some reason, just average what we have
         val samples = scanBuffer.size
+        val channelCount = scanBuffer[0].size
         
         // Compute Average
-        val sum = FloatArray(18) { 0f }
+        val sum = FloatArray(channelCount) { 0f }
         scanBuffer.forEach { reading ->
-            reading.forEachIndexed { i, value ->
-                 sum[i] += value
+            if (reading.size == channelCount) {
+                reading.forEachIndexed { i, value ->
+                     sum[i] += value
+                }
             }
         }
         
@@ -182,17 +185,20 @@ class SpectralSensorManager(private val context: Context) {
     private fun parseData(csv: String) {
         try {
             val values = csv.split(",").map { it.toFloat() }
-            if (values.size == 18) {
+            // Support both AS7265x (18) and AS7341 (10)
+            if (values.size == 18 || values.size == 10) {
                 
                 if (pendingScans > 0) {
                     scanBuffer.add(values)
                     pendingScans--
                     
                     if (pendingScans > 0) {
-                        // Request next sample after short delay to let sensor reset
+                        // Request next sample after minimal delay
+                        // Sensor takes ~100ms to integration. 
+                        // 10ms delay gives just enough breathing room for BLE stack.
                         Handler(Looper.getMainLooper()).postDelayed({
                              sendScanCommand()
-                        }, 50)  // Reduced from 150ms to 50ms for faster scanning
+                        }, 10)  // Tight timing: 100ms scan + 10ms delay = ~9Hz
                         _connectionState.value = "Sampling... ($pendingScans left)"
                     } else {
                         // All Done
@@ -201,7 +207,7 @@ class SpectralSensorManager(private val context: Context) {
                 } else {
                     // Single shot or unsolicited data
                     _lastReading.value = values
-                    _connectionState.value = "Single Reading Received"
+                    _connectionState.value = "Single Reading Received (${values.size} ch)"
                 }
             }
         } catch (e: Exception) {

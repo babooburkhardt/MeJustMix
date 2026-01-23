@@ -1101,19 +1101,30 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
      * Save geometry measurements from wizard.
      * Saves both global geometry (tube properties) and per-pump phase offset (timing).
      */
+    // Calibration Session State
+    private val fullDiameterMeasurements = mutableListOf<Float>()
+
+    /**
+     * Save geometry measurements from wizard.
+     * Saves both global geometry (tube properties) and per-pump phase offset (timing).
+     * NOW AVERAGES global geometry across multiple pump measurements.
+     */
     fun saveGeometryFromWizard(
         pumpIndex: Int,
         taperStartSteps: Float,
         taperLengthMm: Float,
         fullDiameterMm: Float
     ) {
-        // Save global geometry (describes the tube)
+        // 1. Accumulate Measurement
+        fullDiameterMeasurements.add(fullDiameterMm)
+        val avgFullDiameter = fullDiameterMeasurements.average().toFloat()
+
+        // 2. Save GLOBAL geometry (Averaged)
         _uiState.update { 
-            it.copy(fullDiameterSectionMm = fullDiameterMm.coerceAtLeast(0f)) 
+            it.copy(fullDiameterSectionMm = avgFullDiameter.coerceAtLeast(0f)) 
         }
         
-        // Save per-pump phase offset (when the taper occurs for THIS pump)
-        // The taper start position becomes the new phase reference
+        // 3. Save PER-PUMP phase offset (timing is always local)
         val pump = _uiState.value.pumps.getOrNull(pumpIndex) ?: return
         val updatedPump = pump.copy(pulseHomeOffset = -taperStartSteps)
         
@@ -1124,7 +1135,7 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
         }
         
         saveSettings()
-        showToast("${pump.name}: Geometry calibrated (${String.format("%.1f", fullDiameterMm)}mm)")
+        showToast("${pump.name} Saved. Global Geometry Avg (N=${fullDiameterMeasurements.size}): ${String.format("%.1f", avgFullDiameter)}mm")
     }
     
     /**

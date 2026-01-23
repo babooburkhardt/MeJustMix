@@ -12,7 +12,8 @@ object SpectralMath {
      * Use this when you want to use the physics engine to mix this color.
      */
     fun calculateKSFromSpectral(sample: List<Float>, whiteRef: List<Float>): KSColor? {
-        if (sample.size != 18 || whiteRef.size != 18) return null
+        if (sample.size != 18 && sample.size != 10) return null
+        if (whiteRef.size != sample.size) return null
         
         // 1. Calculate Reflectance R = Sample / White
         val reflectance = sample.zip(whiteRef) { s, w -> 
@@ -20,16 +21,35 @@ object SpectralMath {
         }
         
         // 2. Calculate K/S = (1-R)^2 / 2R
-        // We use the Physics Engine helper here.
         val ks = reflectance.map { r -> ColorPhysicsEngine.reflectanceToKS(r) }
         
-        // 3. Map Channels to RGB (Approximate based on AS7265x wavelengths)
-        // Red ~ 610nm -> Index 8 (I)
-        // Green ~ 560nm -> Index 6 (G)
-        // Blue ~ 460nm -> Index 14 (C)
-        val ksRed = ks[8]
-        val ksGreen = ks[6]
-        val ksBlue = ks[14]
+        // 3. Map Channels to RGB
+        val ksRed: Float
+        val ksGreen: Float
+        val ksBlue: Float
+        
+        if (sample.size == 10) {
+            // AS7341 Mapping (10 Channels)
+            // F1: 415nm, F2: 445nm, F3: 480nm, F4: 515nm
+            // F5: 555nm, F6: 590nm, F7: 630nm, F8: 680nm
+            
+            // Red: F7 (630nm) matches sRGB Red (~612nm) well
+            ksRed = ks[6]
+            
+            // Green: F5 (555nm) is peak human sensitivity
+            ksGreen = ks[4]
+            
+            // Blue: F2 (445nm) matches sRGB Blue (~435-450nm) well
+            ksBlue = ks[1]
+        } else {
+            // AS7265x Mapping (18 Channels) - Legacy
+            // Red ~ 610nm -> Index 8 (I)
+            // Green ~ 560nm -> Index 6 (G)
+            // Blue ~ 460nm -> Index 14 (C)
+            ksRed = ks[8]
+            ksGreen = ks[6]
+            ksBlue = ks[14]
+        }
         
         return KSColor(ksRed, ksGreen, ksBlue, 1.0f)
     }

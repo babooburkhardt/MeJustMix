@@ -2,15 +2,15 @@
  * ESP32 Spectral Sensor Bridge Firmware
  * 
  * Target: ESP32-WROOM
- * Sensor: AS7265x Triad (I2C)
+ * Sensor: Adafruit AS7341 10-Channel Light / Color Sensor (I2C)
  * Function: BLE Server to transmit spectral data to Android App
  * 
  * Dependencies:
- * 1. Adafruit AS7265x Library (Install via Library Manager)
+ * 1. Adafruit AS7341 Library (Install via Library Manager)
  * 2. ESP32 BLE Arduino (Built-in to ESP32 Board Package)
  */
 #include <Wire.h>
-#include <Adafruit_AS7265x.h>
+#include <Adafruit_AS7341.h>
 #include <BLEDevice.h>
 #include <BLEServer.h>
 #include <BLEUtils.h>
@@ -25,7 +25,7 @@
 #define CHAR_DATA_UUID         "beb5483e-36e1-4688-b7f5-ea07361b26a8"
 #define CHAR_CONTROL_UUID      "824c965e-269c-4869-9f79-6a3f124c6536"
 // --- Global Objects ---
-Adafruit_AS7265x sensor;
+Adafruit_AS7341 as7341;
 BLEServer* pServer = NULL;
 BLECharacteristic* pDataCharacteristic = NULL;
 BLECharacteristic* pControlCharacteristic = NULL;
@@ -62,11 +62,11 @@ void setup() {
   pinMode(LED_PIN, OUTPUT);
   
   // 1. Initialize I2C and Sensor
-  Serial.println("Initializing AS7265x Sensor...");
+  Serial.println("Initializing AS7341 Sensor...");
   Wire.begin(I2C_SDA, I2C_SCL);
   
-  if(!sensor.begin()) {
-    Serial.println("AS7265x not found! Check wiring.");
+  if(!as7341.begin()) {
+    Serial.println("AS7341 not found! Check wiring.");
     // Blink fast forever to indicate error
     while(1) {
       digitalWrite(LED_PIN, !digitalRead(LED_PIN));
@@ -75,8 +75,20 @@ void setup() {
   }
   Serial.println("Sensor Found!");
   
-  // Turn off sensor bulb initially if on
-  sensor.disableIndicator();
+  // Configure Sensor
+  // Optimization: Total Scan Time ~100ms (10Hz)
+  // Step Time = (ATIME + 1) * (ASTEP + 1) * 2.78µs
+  // (29 + 1) * (599 + 1) * 2.78 = 30 * 600 * 2.78 ≈ 50,040µs (50ms)
+  // Total (x2 steps) = 100ms
+  // 50ms is a multiple of both 16.6ms (60Hz) and 20ms (50Hz), canceling flicker noise.
+  
+  as7341.setATIME(29);
+  as7341.setASTEP(599);
+  as7341.setGain(AS7341_GAIN_64X); // Reduced from 256X to prevent saturation
+  
+  // Turn off onboard LED initially (if wired to LED pin on breakout)
+  // as7341.enableLED(false); // Note: Breakout board specific
+
   // 2. Initialize BLE
   Serial.println("Initializing BLE...");
   BLEDevice::init("ESP32_Spectral_Bridge");
@@ -137,45 +149,33 @@ void performSpectralScan() {
   // Visual Feedback: LED ON
   digitalWrite(LED_PIN, HIGH);
   
-  // Take measurements (one-shot)
-  sensor.takeMeasurements(); 
-  // Note: takeMeasurements() is blocking in the standard library.
-  // If non-blocking is required later, we would use state machine with .dataReady()
+  // Take measurements
+  if (!as7341.readAllChannels()){
+    Serial.println("Error reading all channels!");
+    return;
+  }
   
-  // Collect 18 channels
-  // Order: 
-  // AS72651: R, S, T, U, V, W 
-  // AS72652: G, H, I, J, K, L 
-  // AS72653: A, B, C, D, E, F
+  // Collect 10 channels
+  // F1..F8, Clear, NIR
   
-  float channels[18];
+  uint16_t channels[10];
   
-  channels[0] = sensor.getCalibratedR();
-  channels[1] = sensor.getCalibratedS();
-  channels[2] = sensor.getCalibratedT();
-  channels[3] = sensor.getCalibratedU();
-  channels[4] = sensor.getCalibratedV();
-  channels[5] = sensor.getCalibratedW();
-  channels[6] = sensor.getCalibratedG();
-  channels[7] = sensor.getCalibratedH();
-  channels[8] = sensor.getCalibratedI();
-  channels[9] = sensor.getCalibratedJ();
-  channels[10] = sensor.getCalibratedK();
-  channels[11] = sensor.getCalibratedL();
-  channels[12] = sensor.getCalibratedA();
-  channels[13] = sensor.getCalibratedB();
-  channels[14] = sensor.getCalibratedC();
-  channels[15] = sensor.getCalibratedD();
-  channels[16] = sensor.getCalibratedE();
-  channels[17] = sensor.getCalibratedF();
+  channels[0] = as7341.getChannel(AS7341_CHANNEL_415nm_F1);
+  channels[1] = as7341.getChannel(AS7341_CHANNEL_445nm_F2);
+  channels[2] = as7341.getChannel(AS7341_CHANNEL_480nm_F3);
+  channels[3] = as7341.getChannel(AS7341_CHANNEL_515nm_F4);
+  channels[4] = as7341.getChannel(AS7341_CHANNEL_555nm_F5);
+  channels[5] = as7341.getChannel(AS7341_CHANNEL_590nm_F6);
+  channels[6] = as7341.getChannel(AS7341_CHANNEL_630nm_F7);
+  channels[7] = as7341.getChannel(AS7341_CHANNEL_680nm_F8);
+  channels[8] = as7341.getChannel(AS7341_CHANNEL_CLEAR);
+  channels[9] = as7341.getChannel(AS7341_CHANNEL_NIR);
+  
   // Create CSV String
-  // Using String class for ease of concatenation, though std::string or char buf is faster.
-  // For 18 floats, typically 6 chars per float + comma ~= 126 chars.
-  // We reserve enough space.
   String dataString = "";
-  for (int i = 0; i < 18; i++) {
-    dataString += String(channels[i], 2); // 2 decimal places
-    if (i < 17) dataString += ",";
+  for (int i = 0; i < 10; i++) {
+    dataString += String(channels[i]);
+    if (i < 9) dataString += ",";
   }
   Serial.print("Data: ");
   Serial.println(dataString);
