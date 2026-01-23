@@ -736,6 +736,7 @@ fun PulseModeSettingsCard(
     onSnapAllToHome: () -> Unit,
     pulseSmoothingStrength: Float = 1.0f,
     onPulseSmoothingChange: (Float) -> Unit,
+    onOpenTuningTool: () -> Unit,
     pumps: List<PumpConfig>,
     modifier: Modifier = Modifier
 ) {
@@ -835,13 +836,27 @@ fun PulseModeSettingsCard(
                 
                 Spacer(Modifier.height(8.dp))
                 
-                OutlinedButton(
-                    onClick = onSnapAllToHome,
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Icon(Icons.Default.Home, null, modifier = Modifier.size(18.dp))
-                    Spacer(Modifier.width(8.dp))
-                    Text("Snap All to Nearest Pulse Boundary")
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedButton(
+                        onClick = onSnapAllToHome,
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Icon(Icons.Default.Home, null, modifier = Modifier.size(18.dp))
+                        Spacer(Modifier.width(8.dp))
+                        Text("Snap Home", maxLines = 1)
+                    }
+                    
+                    OutlinedButton(
+                        onClick = onOpenTuningTool,
+                        modifier = Modifier.weight(1f),
+                        colors = ButtonDefaults.outlinedButtonColors(
+                            contentColor = MaterialTheme.colorScheme.tertiary
+                        )
+                    ) {
+                        Icon(Icons.Default.Build, null, modifier = Modifier.size(18.dp)) // Using Build icon (wrench) usually
+                        Spacer(Modifier.width(8.dp))
+                        Text("Live Tune", maxLines = 1)
+                    }
                 }
             }
         }

@@ -50,8 +50,15 @@ object PulseCompensationCalculator {
         strengthFactor: Float = 1.0f
     ): PulseProfile {
         // Calculate taper length (each side)
+        // Calculate taper length (each side)
         val taperLength = ((pillowLengthMm - fullDiameterSectionMm) / 2f).coerceAtLeast(0f)
-        val taperFraction = (taperLength / pillowLengthMm).coerceIn(0.01f, 0.49f)
+        
+        // Safety check for division by zero if pillowLength is 0
+        val taperFraction = if (pillowLengthMm > 0.1f) {
+            (taperLength / pillowLengthMm).coerceIn(0.01f, 0.49f)
+        } else {
+            0.01f // Fallback safe value
+        }
         
         // Asymmetric Compensation Strategy:
         // 1. Entry Taper (Touch-down): This inherently causes a surge (positive displacement).
@@ -66,9 +73,9 @@ object PulseCompensationCalculator {
         
         // 2. Exit Taper (Lift-off): This inherently causes a dip (vacuum/backflow).
         //    We must SPEED UP significantly to fill the void.
-        //    Base requirement is approx 2.0x, scaled by geometry and user strength factor.
-        val baseExitMultiplier = 2.0f
-        val exitMultiplier = 1.0f + ((baseExitMultiplier - 1.0f) * strengthFactor)
+        //    Strength factor directly controls the exit speed multiplier (0x = no compensation, 5x = extreme)
+        //    Minimum of 1.0x to prevent slowdown
+        val exitMultiplier = strengthFactor.coerceAtLeast(1.0f)
         
         // Volume calculation using cylinder approximation
         // V = π * r² * L (for full section)

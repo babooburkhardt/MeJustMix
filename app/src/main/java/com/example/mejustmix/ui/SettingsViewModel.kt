@@ -21,6 +21,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.isActive
 import androidx.lifecycle.viewModelScope
 
 // Fully defined PumpConfig
@@ -108,10 +109,17 @@ data class SettingsUiState(
     val whiteReference: List<Float>? = null,
     
     // First-time setup
-    val hasSeenCalibrationWarning: Boolean = false
+    val hasSeenCalibrationWarning: Boolean = false,
+    
+    // Live Tuning Tool State
+    val isTuning: Boolean = false,
+    val tuningPumpIndex: Int = -1,
+    val tuningPhaseOffset: Float = 0f, // Phase shift in degrees (-45 to +45)
+    val tuningPulseWidthDegrees: Float? = null // Override for taper width (5-45)
 )
 
 class SettingsViewModel(application: Application) : AndroidViewModel(application) {
+
 
     private val _uiState = MutableStateFlow(SettingsUiState())
     val uiState = _uiState.asStateFlow()
@@ -478,11 +486,118 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
         }
     }
     
+    private var tuningJob: kotlinx.coroutines.Job? = null
+
     fun updatePulseMinimum(minimum: Int) {
         _uiState.update { it.copy(pulseMinimum = minimum.coerceAtLeast(0)) }
         saveSettings()
     }
     
+
+    
+    // --- Live Tuning Tools ---
+    
+    fun toggleTuning(pumpIndex: Int, enable: Boolean) {
+        if (enable) startTuning(pumpIndex) else stopTuning()
+    }
+    
+    private fun startTuning(pumpIndex: Int) {
+        stopTuning()
+        
+        // Calculate current width degrees from geometry
+        val currentProfile = com.example.mejustmix.utils.PulseCompensationCalculator.calculateProfile(
+            pillowLengthMm = _uiState.value.pillowLengthMm,
+            fullDiameterSectionMm = _uiState.value.fullDiameterSectionMm
+        )
+        val currentWidthDeg = (currentProfile.taperFraction * 360f)
+        
+        _uiState.update { it.copy(
+            isTuning = true, 
+            tuningPumpIndex = pumpIndex, 
+            tuningPhaseOffset = 0f,
+            tuningPulseWidthDegrees = currentWidthDeg
+        ) }
+        
+        tuningJob = viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO) {
+            // Configure FluidNC for aggressive tuning
+            printerRepository.ensureTuningSettings(pumpIndex, _uiState.value.pumps)
+            
+            // Wait for UI to settle
+            kotlinx.coroutines.delay(200)
+            
+            while (isActive && _uiState.value.isTuning) {
+                val state = _uiState.value
+                val pump = state.pumps.getOrNull(pumpIndex) ?: break
+                
+                // Dispense small chunks (3 pulses per batch)
+                val pulses = 3
+                
+                val stepsPerPulse = pump.stepsPerPulse.takeIf { it > 1.0f } ?: 200f
+                val shiftSteps = (state.tuningPhaseOffset / 360f) * stepsPerPulse
+                
+                printerRepository.dispensePulses(
+                    pumpIndex = pumpIndex,
+                    pulseCount = pulses,
+                    stepsPerPulse = stepsPerPulse,
+                    settings = state,
+                    phaseShiftSteps = shiftSteps
+                )
+                
+                kotlinx.coroutines.delay(3000) // 3 second delay to prevent queue flooding
+            }
+            
+            with(kotlinx.coroutines.Dispatchers.Main) {
+                _uiState.update { it.copy(isTuning = false) }
+            }
+        }
+    }
+    
+    fun stopTuning() {
+        tuningJob?.cancel()
+        _uiState.update { it.copy(isTuning = false) }
+    }
+    
+    fun updateTuningOffset(offsetDegrees: Float) {
+        _uiState.update { it.copy(tuningPhaseOffset = offsetDegrees) }
+    }
+    
+    fun updateTuningWidth(degrees: Float) {
+        _uiState.update { it.copy(tuningPulseWidthDegrees = degrees) }
+    }
+    
+    fun saveTuningResult() {
+        val state = _uiState.value
+        val pumpIndex = state.tuningPumpIndex
+        if (pumpIndex < 0) return
+        
+        // Save Timing (Per Pump)
+        val pump = state.pumps[pumpIndex]
+        val stepsPerPulse = pump.stepsPerPulse.takeIf { it > 1.0f } ?: 200f
+        val shiftSteps = (state.tuningPhaseOffset / 360f) * stepsPerPulse
+        val newHomeOffset = pump.pulseHomeOffset - shiftSteps
+        var updatedPump = pump.copy(pulseHomeOffset = newHomeOffset)
+        
+        // Save Width (Global)
+        if (state.tuningPulseWidthDegrees != null) {
+            val widthDeg = state.tuningPulseWidthDegrees
+            // fullDiameter = pillow - 2 * (pillow * fraction)
+            val fraction = widthDeg / 360f
+            val newFullDiameter = state.pillowLengthMm - (2f * state.pillowLengthMm * fraction)
+            _uiState.update { it.copy(fullDiameterSectionMm = newFullDiameter.coerceAtLeast(1f)) }
+            saveSettings() 
+        }
+        
+        // Update pump config inline
+        _uiState.update { s ->
+            val newPumps = s.pumps.toMutableList()
+            newPumps[pumpIndex] = updatedPump
+            s.copy(pumps = newPumps)
+        }
+        saveSettings()
+        
+        stopTuning()
+    }
+
     fun updatePulseSmoothingStrength(strength: Float) {
         _uiState.update { it.copy(pulseSmoothingStrength = strength.coerceIn(0f, 3f)) }
         saveSettings()
@@ -899,7 +1014,8 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
      * Update the pillow length geometry (mm).
      */
     fun setPillowLengthMm(length: Float) {
-        _uiState.update { it.copy(pillowLengthMm = length.coerceIn(10f, 100f)) }
+        // Allow user to enter what they want (must be non-negative)
+        _uiState.update { it.copy(pillowLengthMm = length.coerceAtLeast(0f)) }
         saveSettings()
     }
     
@@ -907,7 +1023,7 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
      * Update the tube inner diameter (mm).
      */
     fun setTubeInnerDiameterMm(diameter: Float) {
-        _uiState.update { it.copy(tubeInnerDiameterMm = diameter.coerceIn(1f, 10f)) }
+        _uiState.update { it.copy(tubeInnerDiameterMm = diameter.coerceAtLeast(0f)) }
         saveSettings()
     }
     
@@ -915,10 +1031,8 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
      * Update the full diameter section length (mm).
      */
     fun setFullDiameterSectionMm(length: Float) {
-        val currentState = _uiState.value
-        // Ensure full section <= pillow length
-        val clamped = length.coerceIn(5f, currentState.pillowLengthMm - 1f)
-        _uiState.update { it.copy(fullDiameterSectionMm = clamped) }
+        // Allow 0 fully (triangular pillow profile)
+        _uiState.update { it.copy(fullDiameterSectionMm = length.coerceAtLeast(0f)) }
         saveSettings()
     }
     

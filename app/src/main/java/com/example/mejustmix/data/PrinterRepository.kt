@@ -138,6 +138,29 @@ class PrinterRepository private constructor(context: Context) {
     fun addToHistory(msg: String) {
         _gcodeHistory.update { it + msg }
     }
+    
+    /**
+     * Ensure FluidNC settings are appropriate for aggressive pulse tuning.
+     * Sets max feed rate to 15000 mm/min and acceleration to 2500 mm/s² for the specified pump.
+     * This allows 5x speed multipliers without hitting limits.
+     */
+    suspend fun ensureTuningSettings(pumpIndex: Int, pumps: List<PumpConfig>) {
+        val pump = pumps.getOrNull(pumpIndex) ?: return
+        
+        // For 5x multiplier with base rate ~2000-3000, we need max rate of 15000+
+        val tuningMaxRate = 15000
+        // For aggressive speed changes, we need high acceleration
+        val tuningAcceleration = 2500
+        
+        val commands = listOf(
+            "$11${pump.axisIndex}=$tuningMaxRate",  // Set max rate
+            "$12${pump.axisIndex}=$tuningAcceleration"  // Set acceleration
+        )
+        
+        addToHistory(">> Configuring FluidNC for tuning (Max: ${tuningMaxRate}, Accel: ${tuningAcceleration})")
+        sendGCodeCommands(commands)
+        delay(100) // Give FluidNC time to process
+    }
 
     // --- High Level Operations ---
 
@@ -271,7 +294,13 @@ class PrinterRepository private constructor(context: Context) {
     
     // --- Pulse Mode Helpers ---
     
-    suspend fun dispensePulses(pumpIndex: Int, pulseCount: Int, stepsPerPulse: Float, settings: SettingsUiState) {
+    suspend fun dispensePulses(
+        pumpIndex: Int, 
+        pulseCount: Int, 
+        stepsPerPulse: Float, 
+        settings: SettingsUiState,
+        phaseShiftSteps: Float = 0f
+    ) {
         _isSending.value = true
         try {
              val pump = settings.pumps[pumpIndex]
@@ -279,7 +308,10 @@ class PrinterRepository private constructor(context: Context) {
              val testPump = pump.copy(stepsPerPulse = stepsPerPulse)
              
              val gcode = if (settings.usePulseMode) {
-                 val initialPhase = _pumpPhaseSteps[pump.name] ?: 0f
+                 val rawTruePhase = _pumpPhaseSteps[pump.name] ?: 0f
+                 // Apply tuning shift (normalized positive)
+                 val initialPhase = ((rawTruePhase + phaseShiftSteps) % stepsPerPulse + stepsPerPulse) % stepsPerPulse
+                 
                  val result = GCodeGenerator.generateCompensatedPulseScript(
                      pump = testPump,
                      pulseCount = pulseCount,
@@ -287,7 +319,27 @@ class PrinterRepository private constructor(context: Context) {
                      profile = calculatePulseProfile(settings),
                      initialPhaseSteps = initialPhase
                  )
-                 _pumpPhaseSteps[pump.name] = result.second
+                 
+                 // Restore true phase logic:
+                 // The result.second is the ENDING phase of the shifted operation.
+                 // We need to un-shift it to get back to physical phase.
+                 // But simply subtracting might be tricky with modulo wraparound.
+                 // Alternative robust way: TrueEndPhase = (TrueStartPhase + TotalStepsDispensed) % StepsPerPulse.
+                 // Since dispensePulses dispenses exactly `pulseCount * stepsPerPulse` (if full pulses), 
+                 // the phase should advance by exactly that amount. 
+                 // Actually `generateCompensatedPulseScript` dispenses `pulseCount` pulses.
+                 // So TrueEndPhase SHOULD be (TrueStartPhase) if integer pulses?
+                 // Wait, Phase Tracking logic in Calculator:
+                 // It advances phase by `stepsToDo`.
+                 
+                 // Robust calculation of true physical end phase:
+                 // We know exactly how many steps were dispensed? 
+                 // result.first is G-code. result.second is end phase.
+                 // For now, let's just reverse the shift.
+                 val shiftedEndPhase = result.second
+                 val trueEndPhase = ((shiftedEndPhase - phaseShiftSteps) % stepsPerPulse + stepsPerPulse) % stepsPerPulse
+                 
+                 _pumpPhaseSteps[pump.name] = trueEndPhase
                  result.first
              } else {
                  val cmd = GCodeGenerator.generatePulsePrimeScript(
@@ -397,9 +449,18 @@ class PrinterRepository private constructor(context: Context) {
         val avgCalibration = settings.pumps.map { it.calibration.toFloatOrNull() ?: 100f }.average().toFloat()
         val baseFeedRate = (flowRateMlPerSec * avgCalibration * 60).toInt()
         
+        // Use tuning width if active, otherwise use persistent setting
+        val fullDiameterMm = if (settings.isTuning && settings.tuningPulseWidthDegrees != null) {
+            val widthDeg = settings.tuningPulseWidthDegrees
+            val fraction = widthDeg / 360f
+            (settings.pillowLengthMm - (2f * settings.pillowLengthMm * fraction)).coerceAtLeast(1f)
+        } else {
+            settings.fullDiameterSectionMm
+        }
+        
         return com.example.mejustmix.utils.PulseCompensationCalculator.calculateProfile(
             pillowLengthMm = settings.pillowLengthMm,
-            fullDiameterSectionMm = settings.fullDiameterSectionMm,
+            fullDiameterSectionMm = fullDiameterMm,
             tubeInnerDiameterMm = settings.tubeInnerDiameterMm,
             baseFeedRate = baseFeedRate,
             strengthFactor = settings.pulseSmoothingStrength

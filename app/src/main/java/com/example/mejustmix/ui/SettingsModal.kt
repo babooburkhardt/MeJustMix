@@ -87,6 +87,7 @@ fun SettingsSectionHeader(
     }
 }
 
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SettingsModal(
@@ -100,6 +101,17 @@ fun SettingsModal(
     
     // Expanded sections state - connection expanded by default
     var expandedSection by rememberSaveable { mutableStateOf("connection") }
+
+    // Tuning Tool State
+    var showPumpSelector by remember { mutableStateOf(false) }
+    var showTuningDialogForPumpIndex by remember { mutableStateOf<Int?>(null) }
+    
+    // Add effect to stop tuning if dialog is dismissed or unmounted
+    DisposableEffect(Unit) {
+        onDispose {
+            settingsViewModel.stopTuning()
+        }
+    }
     
     // --- BLE PERMISSION LAUNCHER ---
     val permissionLauncher = rememberLauncherForActivityResult(
@@ -802,6 +814,13 @@ fun SettingsModal(
                                 onSnapAllToHome = { settingsViewModel.snapAllPumpsToHome() },
                                 pulseSmoothingStrength = uiState.pulseSmoothingStrength,
                                 onPulseSmoothingChange = { settingsViewModel.updatePulseSmoothingStrength(it) },
+                                onOpenTuningTool = {
+                                    if (uiState.pumps.size > 1) {
+                                        showPumpSelector = true
+                                    } else {
+                                        showTuningDialogForPumpIndex = 0
+                                    }
+                                },
                                 pumps = uiState.pumps
                             )
                             
@@ -843,9 +862,16 @@ fun SettingsModal(
                                         Row(
                                             horizontalArrangement = Arrangement.spacedBy(8.dp)
                                         ) {
+                                            // Local state for Pillow Length
+                                            var pillowText by remember { mutableStateOf(String.format("%.1f", uiState.pillowLengthMm)) }
+                                            if (pillowText.toFloatOrNull() != uiState.pillowLengthMm) {
+                                                pillowText = String.format("%.1f", uiState.pillowLengthMm)
+                                            }
+
                                             OutlinedTextField(
-                                                value = String.format("%.1f", uiState.pillowLengthMm),
+                                                value = pillowText,
                                                 onValueChange = { 
+                                                    pillowText = it
                                                     it.toFloatOrNull()?.let { v -> settingsViewModel.setPillowLengthMm(v) }
                                                 },
                                                 label = { Text("Pillow (mm)") },
@@ -853,9 +879,16 @@ fun SettingsModal(
                                                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                                                 singleLine = true
                                             )
+                                            // Local state for Tube ID
+                                            var tubeIdText by remember { mutableStateOf(String.format("%.1f", uiState.tubeInnerDiameterMm)) }
+                                            if (tubeIdText.toFloatOrNull() != uiState.tubeInnerDiameterMm) {
+                                                tubeIdText = String.format("%.1f", uiState.tubeInnerDiameterMm)
+                                            }
+
                                             OutlinedTextField(
-                                                value = String.format("%.1f", uiState.tubeInnerDiameterMm),
+                                                value = tubeIdText,
                                                 onValueChange = { 
+                                                    tubeIdText = it
                                                     it.toFloatOrNull()?.let { v -> settingsViewModel.setTubeInnerDiameterMm(v) }
                                                 },
                                                 label = { Text("Tube ID (mm)") },
@@ -865,9 +898,17 @@ fun SettingsModal(
                                             )
                                         }
                                         
+                                        // Local state to prevent "fighting" the formatter while typing
+                                        var fullDiameterText by remember { mutableStateOf(String.format("%.1f", uiState.fullDiameterSectionMm)) }
+                                        // Update local text only if external value changes significantly (not just formatting diff)
+                                        if (fullDiameterText.toFloatOrNull() != uiState.fullDiameterSectionMm) {
+                                            fullDiameterText = String.format("%.1f", uiState.fullDiameterSectionMm)
+                                        }
+
                                         OutlinedTextField(
-                                            value = String.format("%.1f", uiState.fullDiameterSectionMm),
+                                            value = fullDiameterText,
                                             onValueChange = { 
+                                                fullDiameterText = it
                                                 it.toFloatOrNull()?.let { v -> settingsViewModel.setFullDiameterSectionMm(v) }
                                             },
                                             label = { Text("Full Diameter Section (mm)") },
@@ -1168,6 +1209,60 @@ fun SettingsModal(
             TextButton(onClick = onDismissRequest) { Text("Done") }
         }
     )
+    
+    // --- TUNING DIALOGS ---
+    
+    if (showPumpSelector) {
+        AlertDialog(
+            onDismissRequest = { showPumpSelector = false },
+            title = { Text("Select Pump to Tune") },
+            text = {
+                Column {
+                    uiState.pumps.forEachIndexed { index, pump ->
+                        TextButton(
+                            onClick = {
+                                showPumpSelector = false
+                                showTuningDialogForPumpIndex = index
+                            },
+                            modifier = Modifier.fillMaxWidth(),
+                            colors = ButtonDefaults.textButtonColors(contentColor = Color(pump.colorArgb))
+                        ) {
+                            Text(pump.name, fontWeight = FontWeight.Bold)
+                        }
+                    }
+                }
+            },
+            confirmButton = {}
+        )
+    }
+    
+    if (showTuningDialogForPumpIndex != null) {
+        val index = showTuningDialogForPumpIndex!!
+        val pump = uiState.pumps.getOrNull(index)
+        if (pump != null) {
+            PulseTuningDialog(
+                pump = pump,
+                isTuning = uiState.isTuning,
+                tuningPhaseOffset = uiState.tuningPhaseOffset,
+                tuningStrength = uiState.pulseSmoothingStrength,
+                tuningPulseWidth = uiState.tuningPulseWidthDegrees,
+                pillowLengthMm = uiState.pillowLengthMm,
+                currentHomeOffset = pump.pulseHomeOffset,
+                onToggleTuning = { settingsViewModel.toggleTuning(index, it) },
+                onOffsetChange = { settingsViewModel.updateTuningOffset(it) },
+                onStrengthChange = { settingsViewModel.updatePulseSmoothingStrength(it) },
+                onWidthChange = { settingsViewModel.updateTuningWidth(it) },
+                onSave = { 
+                    settingsViewModel.saveTuningResult() 
+                    showTuningDialogForPumpIndex = null
+                },
+                onDismiss = {
+                    settingsViewModel.stopTuning()
+                    showTuningDialogForPumpIndex = null
+                }
+            )
+        }
+    }
 }
 
 // SinglePumpSettingsDialog remains unchanged
@@ -1430,4 +1525,5 @@ fun SinglePumpSettingsDialog(
             TextButton(onClick = onDismissRequest) { Text("Close") }
         }
     )
+    
 }
