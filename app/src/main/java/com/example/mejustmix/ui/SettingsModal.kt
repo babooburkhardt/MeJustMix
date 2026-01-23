@@ -1241,6 +1241,31 @@ fun SettingsModal(
                                 }
                             }
 
+                            // --- Rotation Calibration ---
+                            var showRotationCalibration by remember { mutableStateOf(false) }
+                            
+                            OutlinedButton(
+                                onClick = { showRotationCalibration = true },
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Icon(Icons.Default.Refresh, null)
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text("🔄 Calibrate Motor Rotation (Steps/Rev)")
+                            }
+                            
+                            if (showRotationCalibration) {
+                                PulseRotationCalibrationDialog(
+                                    pumps = uiState.pumps,
+                                    onJog = { pumpIndex, steps ->
+                                        settingsViewModel.jogPumpWithBacklash(pumpIndex, steps)
+                                    },
+                                    onSave = { pumpIndex, stepsPerPulse ->
+                                        settingsViewModel.updateStepsPerPulse(pumpIndex, stepsPerPulse)
+                                    },
+                                    onDismiss = { showRotationCalibration = false }
+                                )
+                            }
+
                             // --- FluidNC Speed Limits ---
                             HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
                             

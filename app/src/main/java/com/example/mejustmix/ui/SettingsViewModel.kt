@@ -1126,5 +1126,22 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
         saveSettings()
         showToast("${pump.name}: Geometry calibrated (${String.format("%.1f", fullDiameterMm)}mm)")
     }
+    
+    /**
+     * Update steps per pulse (rotation calibration) for a specific pump.
+     */
+    fun updateStepsPerPulse(pumpIndex: Int, stepsPerPulse: Float) {
+        val pump = _uiState.value.pumps.getOrNull(pumpIndex) ?: return
+        val updatedPump = pump.copy(stepsPerPulse = stepsPerPulse)
+        
+        _uiState.update { state ->
+            val newPumps = state.pumps.toMutableList()
+            newPumps[pumpIndex] = updatedPump
+            state.copy(pumps = newPumps)
+        }
+        
+        saveSettings()
+        showToast("${pump.name}: Rotation calibrated (${String.format("%.0f", stepsPerPulse)} steps/pulse)")
+    }
 }
 
