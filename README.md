@@ -135,7 +135,7 @@ You can change between Bluetooth and WiFi anytime:
 ## 🙌 Credits & Acknowledgements
 This project wouldn't be possible without the work of others:
 
-* **[ZeVeX](https://www.printables.com/@ZeVeX)** – For the **Compact Planetary Gear for Nema17 (4:1)** design used to drive the pumps.
+* **[ZeVeX](https://www.printables.com/@ZeVeX_22610)** – For the **Compact Planetary Gear for Nema17 (4:1)** design used to drive the pumps.
 * **The [FluidNC Team](http://wiki.fluidnc.com/)** – For the incredible firmware that powers the motion control.
 
 ---
