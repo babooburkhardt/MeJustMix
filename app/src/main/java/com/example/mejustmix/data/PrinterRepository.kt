@@ -161,6 +161,24 @@ class PrinterRepository private constructor(context: Context) {
         sendGCodeCommands(commands)
         delay(100) // Give FluidNC time to process
     }
+    
+    /**
+     * Jog a pump by a relative number of steps.
+     * Used by geometry wizard for precise positioning.
+     */
+    suspend fun jogPump(pumpIndex: Int, steps: Float, pumps: List<PumpConfig>) {
+        val pump = pumps.getOrNull(pumpIndex) ?: return
+        
+        val commands = listOf(
+            "G91",  // Relative positioning
+            "G1 ${pump.axis}${String.format(java.util.Locale.US, "%.2f", steps)} F1000",
+            "G90"   // Back to absolute
+        )
+        
+        addToHistory(">> Jog ${pump.name}: ${String.format("%.1f", steps)} steps")
+        sendGCodeCommands(commands)
+        delay(50)
+    }
 
     // --- High Level Operations ---
 

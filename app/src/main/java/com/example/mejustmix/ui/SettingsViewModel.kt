@@ -1068,12 +1068,45 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
         saveSettings()
     }
     
+    
     /**
      * Update the max feed rate limit (mm/min).
      */
     fun setMaxFeedRate(value: Float) {
         _uiState.update { it.copy(maxFeedRate = value.coerceIn(1000f, 20000f)) }
         saveSettings()
+    }
+    
+    // --- Pulse Geometry Wizard Support ---
+    
+    /**
+     * Jog pump with backlash compensation for geometry wizard.
+     * If moving backwards, overshoots and returns to eliminate gear play.
+     */
+    fun jogPumpWithBacklash(pumpIndex: Int, steps: Float) {
+        viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO) {
+            if (steps < 0) {
+                // Reverse: overshoot by 5 steps, then return
+                val overshoot = 5f
+                printerRepository.jogPump(pumpIndex, steps - overshoot, _uiState.value.pumps)
+                kotlinx.coroutines.delay(200)
+                printerRepository.jogPump(pumpIndex, overshoot, _uiState.value.pumps)
+            } else {
+                printerRepository.jogPump(pumpIndex, steps, _uiState.value.pumps)
+            }
+        }
+    }
+    
+    /**
+     * Save geometry measurements from wizard.
+     * Calculates and updates fullDiameterSectionMm based on measured taper points.
+     */
+    fun saveGeometryFromWizard(taperLengthMm: Float, fullDiameterMm: Float) {
+        _uiState.update { 
+            it.copy(fullDiameterSectionMm = fullDiameterMm.coerceAtLeast(0f)) 
+        }
+        saveSettings()
+        showToast("Geometry calibrated: ${String.format("%.1f", fullDiameterMm)}mm full diameter")
     }
 }
 

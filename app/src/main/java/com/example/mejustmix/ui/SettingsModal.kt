@@ -939,6 +939,37 @@ fun SettingsModal(
                                             }
                                         }
                                         
+                                        // Geometry Wizard Button
+                                        var showGeometryWizard by remember { mutableStateOf(false) }
+                                        var wizardPumpIndex by remember { mutableStateOf(0) }
+                                        
+                                        OutlinedButton(
+                                            onClick = { 
+                                                showGeometryWizard = true
+                                                wizardPumpIndex = 0 // Default to first pump
+                                            },
+                                            modifier = Modifier.fillMaxWidth()
+                                        ) {
+                                            Icon(Icons.Default.Settings, null)
+                                            Spacer(modifier = Modifier.width(8.dp))
+                                            Text("📐 Launch Geometry Wizard")
+                                        }
+                                        
+                                        if (showGeometryWizard) {
+                                            PulseGeometryWizard(
+                                                pump = uiState.pumps.getOrNull(wizardPumpIndex) ?: uiState.pumps.first(),
+                                                pumpIndex = wizardPumpIndex,
+                                                pillowLengthMm = uiState.pillowLengthMm,
+                                                onJog = { steps ->
+                                                    settingsViewModel.jogPumpWithBacklash(wizardPumpIndex, steps)
+                                                },
+                                                onSave = { taperLengthMm, fullDiameterMm ->
+                                                    settingsViewModel.saveGeometryFromWizard(taperLengthMm, fullDiameterMm)
+                                                },
+                                                onDismiss = { showGeometryWizard = false }
+                                            )
+                                        }
+                                        
                                         // --- Dynamic Acceleration Control ---
                                         HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
                                         
