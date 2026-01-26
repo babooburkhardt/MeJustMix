@@ -112,6 +112,7 @@ fun VisualizerCard(
 
     if (showManualBaseDialog) {
         ManualBaseDialog(
+            mixViewModel = mixViewModel,
             totalVolume = totalVolume,
             onDismissRequest = { showManualBaseDialog = false },
             onConfirm = { name, transp, incWhite ->

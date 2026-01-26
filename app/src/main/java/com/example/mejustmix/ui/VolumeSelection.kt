@@ -27,6 +27,7 @@ fun VolumeSelection(
 
     if (showCustomDialog) {
         CustomVolumeDialog(
+            mixViewModel = mixViewModel,
             onDismissRequest = { showCustomDialog = false },
             onConfirm = { vol ->
                 customVolume = vol

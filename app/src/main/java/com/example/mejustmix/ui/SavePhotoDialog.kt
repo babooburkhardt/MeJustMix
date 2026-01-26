@@ -25,7 +25,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.window.Dialog
+import com.example.mejustmix.ui.components.BlurManagedDialog
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -46,7 +46,10 @@ fun SavePhotoDialog(
         }
     }
 
-    Dialog(onDismissRequest = onDismissRequest) {
+    BlurManagedDialog(
+        mixViewModel = mixViewModel,
+        onDismissRequest = onDismissRequest
+    ) {
         Card {
             Column(
                 modifier = Modifier.padding(16.dp)

@@ -15,9 +15,11 @@ import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
+import com.example.mejustmix.ui.components.BlurManagedDialog
 
 @Composable
 fun CustomVolumeDialog(
+    mixViewModel: MixViewModel,
     onDismissRequest: () -> Unit,
     onConfirm: (Float) -> Unit
 ) {
@@ -25,7 +27,10 @@ fun CustomVolumeDialog(
     val configuration = LocalConfiguration.current
     val isTablet = configuration.screenWidthDp >= 600
 
-    Dialog(onDismissRequest = onDismissRequest) {
+    BlurManagedDialog(
+        mixViewModel = mixViewModel,
+        onDismissRequest = onDismissRequest
+    ) {
         Card(
             shape = MaterialTheme.shapes.medium,
             colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)

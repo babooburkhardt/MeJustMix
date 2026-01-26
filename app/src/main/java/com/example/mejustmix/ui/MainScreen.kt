@@ -256,8 +256,10 @@ fun MainScreen() {
         }
     }
 
+    val isModalActive by mixViewModel.isModalActive.collectAsState()
+    
     // --- BLUR LOGIC ---
-    val isAnyDialogOpen = showHistory || showSettingsDialog || 
+    val isAnyDialogOpen = isModalActive || showHistory || showSettingsDialog || 
                         showSinglePumpDialogIndex != null || showConnectionModeDialog || 
                         showBLEPermissionDialog || showCalibrationWarning || isSending
     

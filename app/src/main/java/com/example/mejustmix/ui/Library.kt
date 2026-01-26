@@ -67,6 +67,7 @@ import androidx.compose.ui.window.Dialog
 import coil.compose.AsyncImage
 import com.example.mejustmix.ui.components.ModernPillTab
 import com.example.mejustmix.ui.components.ModernPillTabRow
+import com.example.mejustmix.ui.components.BlurManagedDialog
 // EXPLICIT IMPORTS
 import com.example.mejustmix.data.ColorFolder
 import com.example.mejustmix.data.SavedColor
@@ -261,6 +262,7 @@ fun ColorLibraryContent(
         val color = allColors.find { it.id == colorId }
         color?.let {
             EditColorDialog(
+                mixViewModel = mixViewModel,
                 colorName = it.name.ifEmpty { "Unnamed Color" },
                 onDismissRequest = { editingColorId = null },
                 onRename = { newName ->
@@ -280,6 +282,7 @@ fun ColorLibraryContent(
         val folder = libraryItems.find { it.id == folderId }
         folder?.let {
             EditFolderDialog(
+                mixViewModel = mixViewModel,
                 folderName = it.name,
                 isPhotoFolder = false,
                 onDismissRequest = { editingFolderId = null },
@@ -416,6 +419,7 @@ fun PhotoLibraryContent(
         val photo = allPhotos.find { it.id == photoId }
         photo?.let {
             EditPhotoDialog(
+                mixViewModel = mixViewModel,
                 photoName = it.name.ifEmpty { "Unnamed Photo" },
                 onDismissRequest = { editingPhotoId = null },
                 onRename = { newName ->
@@ -435,6 +439,7 @@ fun PhotoLibraryContent(
         val folder = photoLibrary.find { it.id == folderId }
         folder?.let {
             EditFolderDialog(
+                mixViewModel = mixViewModel,
                 folderName = it.name,
                 isPhotoFolder = true,
                 onDismissRequest = { editingFolderId = null },
@@ -556,7 +561,10 @@ fun FolderPaletteDialog(
     val configuration = LocalConfiguration.current
     val screenHeight = configuration.screenHeightDp.dp
     
-    Dialog(onDismissRequest = onDismissRequest) {
+    BlurManagedDialog(
+        mixViewModel = mixViewModel,
+        onDismissRequest = onDismissRequest
+    ) {
         Card(
             modifier = Modifier
                 .fillMaxWidth()

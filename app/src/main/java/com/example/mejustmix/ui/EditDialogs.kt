@@ -6,10 +6,12 @@ import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.window.Dialog
+import com.example.mejustmix.ui.components.BlurManagedDialog
+import com.example.mejustmix.ui.components.BlurManagedAlertDialog
 
 @Composable
 fun EditColorDialog(
+    mixViewModel: MixViewModel,
     colorName: String,
     onDismissRequest: () -> Unit,
     onRename: (String) -> Unit,
@@ -19,7 +21,8 @@ fun EditColorDialog(
     var showDeleteConfirm by remember { mutableStateOf(false) }
 
     if (showDeleteConfirm) {
-        AlertDialog(
+        BlurManagedAlertDialog(
+            mixViewModel = mixViewModel,
             onDismissRequest = { showDeleteConfirm = false },
             title = { Text("Delete Color?") },
             text = { Text("Are you sure you want to delete this color? This cannot be undone.") },
@@ -42,7 +45,10 @@ fun EditColorDialog(
         )
     }
 
-    Dialog(onDismissRequest = onDismissRequest) {
+    BlurManagedDialog(
+        mixViewModel = mixViewModel,
+        onDismissRequest = onDismissRequest
+    ) {
         Card {
             Column(
                 modifier = Modifier.padding(16.dp),
@@ -101,6 +107,7 @@ fun EditColorDialog(
 
 @Composable
 fun EditPhotoDialog(
+    mixViewModel: MixViewModel,
     photoName: String,
     onDismissRequest: () -> Unit,
     onRename: (String) -> Unit,
@@ -110,7 +117,8 @@ fun EditPhotoDialog(
     var showDeleteConfirm by remember { mutableStateOf(false) }
 
     if (showDeleteConfirm) {
-        AlertDialog(
+        BlurManagedAlertDialog(
+            mixViewModel = mixViewModel,
             onDismissRequest = { showDeleteConfirm = false },
             title = { Text("Delete Photo?") },
             text = { Text("Are you sure you want to delete this photo? This cannot be undone.") },
@@ -133,7 +141,10 @@ fun EditPhotoDialog(
         )
     }
 
-    Dialog(onDismissRequest = onDismissRequest) {
+    BlurManagedDialog(
+        mixViewModel = mixViewModel,
+        onDismissRequest = onDismissRequest
+    ) {
         Card {
             Column(
                 modifier = Modifier.padding(16.dp),
@@ -192,6 +203,7 @@ fun EditPhotoDialog(
 
 @Composable
 fun EditFolderDialog(
+    mixViewModel: MixViewModel,
     folderName: String,
     isPhotoFolder: Boolean = false,
     onDismissRequest: () -> Unit,
@@ -204,7 +216,8 @@ fun EditFolderDialog(
     val itemType = if (isPhotoFolder) "Photo Folder" else "Color Folder"
 
     if (showDeleteConfirm) {
-        AlertDialog(
+        BlurManagedAlertDialog(
+            mixViewModel = mixViewModel,
             onDismissRequest = { showDeleteConfirm = false },
             title = { Text("Delete $itemType?") },
             text = { Text("Are you sure you want to delete this folder and all its contents? This cannot be undone.") },
@@ -227,7 +240,10 @@ fun EditFolderDialog(
         )
     }
 
-    Dialog(onDismissRequest = onDismissRequest) {
+    BlurManagedDialog(
+        mixViewModel = mixViewModel,
+        onDismissRequest = onDismissRequest
+    ) {
         Card {
             Column(
                 modifier = Modifier.padding(16.dp),

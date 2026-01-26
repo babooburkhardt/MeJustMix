@@ -125,6 +125,20 @@ class MixViewModel @JvmOverloads constructor(
     private val _isSending = MutableStateFlow(false)
     val isSending = _isSending.asStateFlow()
 
+    // --- GLOBAL MODAL TRACKING ---
+    private val _activeModalCount = MutableStateFlow(0)
+    val isModalActive: StateFlow<Boolean> = _activeModalCount
+        .map { it > 0 }
+        .stateIn(viewModelScope, SharingStarted.Eagerly, false)
+
+    fun incrementModalCount() {
+        _activeModalCount.update { it + 1 }
+    }
+
+    fun decrementModalCount() {
+        _activeModalCount.update { (it - 1).coerceAtLeast(0) }
+    }
+
     // Manual Mode State
     val manualBaseName = mutableStateOf<String?>(null)
     val manualTransparency = mutableStateOf(0f)

@@ -11,10 +11,12 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
+import com.example.mejustmix.ui.components.BlurManagedDialog
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ManualBaseDialog(
+    mixViewModel: MixViewModel,
     totalVolume: Float,
     onDismissRequest: () -> Unit,
     onConfirm: (String, Float, Boolean) -> Unit // UPDATED: Now expects 3 parameters
@@ -23,7 +25,10 @@ fun ManualBaseDialog(
     var transparency by remember { mutableStateOf(0f) } // 0.0 to 0.95
     var includeWhite by remember { mutableStateOf(true) }
 
-    Dialog(onDismissRequest = onDismissRequest) {
+    BlurManagedDialog(
+        mixViewModel = mixViewModel,
+        onDismissRequest = onDismissRequest
+    ) {
         Card(
             shape = RoundedCornerShape(16.dp),
             colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
