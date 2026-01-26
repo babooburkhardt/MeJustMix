@@ -69,6 +69,11 @@ class MyControlCallbacks: public BLECharacteristicCallbacks {
           Serial.println("Control Point: Scan Requested (AS7265x)");
           scanRequestType = 2;
         }
+        // Command '3' (0x33) -> Warmup LED (3 seconds)
+        else if (value[0] == '3' || value[0] == 0x03) {
+          Serial.println("Control Point: Warmup Requested");
+          scanRequestType = 3;
+        }
       }
     }
 };
@@ -161,7 +166,20 @@ void performSpectralScan(int type) {
   
   digitalWrite(LED_PIN, HIGH);
   
-  if (type == 1) {
+  if (type == 3) {
+      // --- WARMUP ROUTINE ---
+      // Turn on LEDs for 3 seconds
+      if (as7341Found) as7341.enableLED(true);
+      if (as7265xFound) as7265x.enableBulb(AS7265x_LED_WHITE);
+      
+      delay(3000); // Warmup
+      
+      if (as7341Found) as7341.enableLED(false);
+      if (as7265xFound) as7265x.disableBulb(AS7265x_LED_WHITE);
+      
+      dataString = "WARMUP_DONE";
+      
+  } else if (type == 1) {
     // --- AS7341 Scan with Auto-Gain & LED ---
     if (!as7341Found) return; 
 

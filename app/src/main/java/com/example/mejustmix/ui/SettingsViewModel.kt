@@ -290,6 +290,10 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
     fun triggerSpectralScan() {
         spectralManager.triggerScan()
     }
+
+    fun triggerSpectralWarmup() {
+        spectralManager.triggerWarmup()
+    }
     
     fun disconnectSpectralSensor() {
         spectralManager.disconnect()
