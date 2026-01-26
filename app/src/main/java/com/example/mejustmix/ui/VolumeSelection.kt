@@ -44,7 +44,7 @@ fun VolumeSelection(
         val buttonPadding = PaddingValues(horizontal = 2.dp, vertical = 0.dp)
         val commonModifier = Modifier
             .weight(1f)
-            .height(64.dp)
+            .height(56.dp)
         
         val buttonShape = RoundedCornerShape(12.dp)
 
