@@ -200,6 +200,32 @@ class SpectralSensorManager(private val context: Context) {
         expectedSensorType = type
     }
 
+    private var isOptimizingGain = false
+    private var currentGainIndex = 6 // Default mid-range
+    
+    fun setGain(index: Int) {
+        if (bluetoothGatt != null && controlCharacteristic != null) {
+             val maxIndex = if (expectedSensorType == "AS7265x") 3 else 10
+             currentGainIndex = index.coerceIn(0, maxIndex)
+             
+            val commandByte: Byte = 4
+            val gainByte = currentGainIndex.toByte()
+            controlCharacteristic!!.value = byteArrayOf(commandByte, gainByte)
+            bluetoothGatt!!.writeCharacteristic(controlCharacteristic)
+            Log.d("Spectral", "Set Gain to Index $currentGainIndex")
+        }
+    }
+
+    fun runAutoGain() {
+        if (bluetoothGatt != null && controlCharacteristic != null) {
+            _connectionState.value = "Optimizing Gain..."
+            isOptimizingGain = true
+            // Start at a mid-low gain to be safe? Or current.
+            // Let's start at current.
+            sendScanCommand()
+        }
+    }
+
     private fun parseData(csv: String) {
         try {
             val values = csv.split(",").map { it.toFloat() }
@@ -212,7 +238,9 @@ class SpectralSensorManager(private val context: Context) {
             }
 
             if (isValid) {
-                if (pendingScans > 0) {
+                if (isOptimizingGain) {
+                    checkGainAndOptimize(values)
+                } else if (pendingScans > 0) {
                     scanBuffer.add(values)
                     pendingScans--
                     
@@ -236,6 +264,47 @@ class SpectralSensorManager(private val context: Context) {
         } catch (e: Exception) {
             Log.e("Spectral", "Parse Error: $csv")
         }
+    }
+    
+    private fun checkGainAndOptimize(values: List<Float>) {
+        val maxVal = values.maxOrNull() ?: 0f
+        val SATURATION_LIMIT = 65000f
+        val LOW_SIGNAL_LIMIT = 3000f // Heuristic
+        
+        val maxGainIndex = if (expectedSensorType == "AS7265x") 3 else 10
+        
+        if (maxVal > SATURATION_LIMIT) {
+            // Saturated, lower gain
+            if (currentGainIndex > 0) {
+                Log.d("Spectral", "Saturated ($maxVal). Lowering gain.")
+                setGain(currentGainIndex - 1)
+                // Wait for sensor to apply gain then scan again. 
+                // Sensor integration time is ~50ms?
+                Handler(Looper.getMainLooper()).postDelayed({ sendScanCommand() }, 200)
+            } else {
+                Log.d("Spectral", "Saturated but at Min Gain.")
+                finishOptimization()
+            }
+        } else if (maxVal < LOW_SIGNAL_LIMIT) {
+             // Too low, raise gain
+             if (currentGainIndex < maxGainIndex) {
+                 Log.d("Spectral", "Signal Low ($maxVal). Increasing gain.")
+                 setGain(currentGainIndex + 1)
+                 Handler(Looper.getMainLooper()).postDelayed({ sendScanCommand() }, 200)
+             } else {
+                 Log.d("Spectral", "Low Signal but at Max Gain.")
+                 finishOptimization()
+             }
+        } else {
+            // Good range
+            Log.d("Spectral", "Gain Optimized at $currentGainIndex (Max: $maxVal)")
+            finishOptimization()
+        }
+    }
+    
+    private fun finishOptimization() {
+        isOptimizingGain = false
+        triggerScan() // Now do the real scan
     }
 }
 

@@ -218,6 +218,11 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
         _uiState.update { it.copy(ipAddress = newIp) }
         saveSettings()
     }
+    
+    fun updateConnectionMode(mode: ConnectionType) {
+        _uiState.update { it.copy(connectionMode = mode) }
+        saveSettings()
+    }
 
     fun updateWebPortalPort(newPort: String) {
         _uiState.update { it.copy(webPortalPort = newPort) }
@@ -289,6 +294,10 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
     
     fun triggerSpectralScan() {
         spectralManager.triggerScan()
+    }
+
+    fun triggerSpectralAutoGain() {
+        spectralManager.runAutoGain()
     }
 
     fun triggerSpectralWarmup() {
@@ -531,7 +540,7 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
         if (enable) startTuning(pumpIndex) else stopTuning()
     }
     
-    private fun startTuning(pumpIndex: Int) {
+    fun startTuning(pumpIndex: Int) {
         stopTuning()
         
         // Calculate current width degrees from geometry
@@ -626,6 +635,12 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
         saveSettings()
         
         stopTuning()
+    }
+
+    fun saveTuningOffset(pumpIndex: Int) {
+        if (_uiState.value.tuningPumpIndex == pumpIndex) {
+            saveTuningResult()
+        }
     }
 
     fun updatePulseSmoothingStrength(strength: Float) {
