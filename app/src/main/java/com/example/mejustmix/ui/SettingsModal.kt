@@ -5,6 +5,7 @@ import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.*
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.material.icons.Icons
@@ -12,6 +13,8 @@ import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
@@ -378,106 +381,109 @@ fun SettingsModal(
                      AnimatedContent(
                          targetState = selectedTabIndex,
                          transitionSpec = {
-                             (fadeIn() + slideInHorizontally { width -> if (targetState > initialState) width else -width })
-                                 .togetherWith(fadeOut() + slideOutHorizontally { width -> if (targetState > initialState) -width else width })
+                             val exitDuration = 200
+                             val enterDuration = 300
+                             val enterDelay = 150 // Wait for exit/resize to mostly finish
+                             
+                             (fadeIn(tween(enterDuration, delayMillis = enterDelay)) + 
+                                 slideInHorizontally(tween(enterDuration, delayMillis = enterDelay, easing = androidx.compose.animation.core.LinearOutSlowInEasing)) { width -> if (targetState > initialState) width else -width })
+                                 .togetherWith(
+                                     fadeOut(tween(exitDuration)) + 
+                                     slideOutHorizontally(tween(exitDuration, easing = androidx.compose.animation.core.FastOutLinearInEasing)) { width -> if (targetState > initialState) -width else width }
+                                 )
+                                 .using(
+                                     SizeTransform(
+                                         clip = false,
+                                         sizeAnimationSpec = { _, _ ->
+                                             // Fast resize (200ms) as requested
+                                             tween(200, easing = androidx.compose.animation.core.FastOutSlowInEasing)
+                                         }
+                                     )
+                                 )
                          },
                          label = "TabContent"
                      ) { page ->
-                        LazyColumn(
+                        // Use Column + verticalScroll for stable intrinsic height measurement during animation
+                        Column(
                             verticalArrangement = Arrangement.spacedBy(16.dp),
-                            modifier = Modifier.fillMaxWidth()
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .verticalScroll(rememberScrollState())
                         ) {
                             when (page) {
                                 0 -> { // Machine
-                                    item {
-                                        ConnectionSection(
-                                            uiState = uiState,
-                                            settingsViewModel = settingsViewModel, 
-                                            expanded = expandedSection == "connection",
-                                            onHeaderClick = { expandedSection = if (expandedSection == "connection") "" else "connection" }
-                                        )
-                                    }
-                                    item {
-                                        DispensingSection(
-                                            uiState = uiState,
-                                            mixViewModel = mixViewModel,
-                                            settingsViewModel = settingsViewModel,
-                                            expanded = expandedSection == "dispensing",
-                                            onHeaderClick = { expandedSection = if (expandedSection == "dispensing") "" else "dispensing" },
-                                            onOpenRetractionTuner = { showRetractionCalibrator = true }
-                                        )
-                                    }
-                                    item {
-                                        PumpSection(
-                                            uiState = uiState,
-                                            expanded = expandedSection == "pumps",
-                                            onHeaderClick = { expandedSection = if (expandedSection == "pumps") "" else "pumps" },
-                                            onShowAxisSelector = { showAxisSelectorForIndex = it },
-                                            onCalibrate = { calibrationChooserIndex = it },
-                                            onPrime = { showPrimeDialogForAxis = it },
-                                            onRefill = { showRefillDialogForIndex = it }
-                                        )
-                                    }
+                                    ConnectionSection(
+                                        uiState = uiState,
+                                        settingsViewModel = settingsViewModel, 
+                                        expanded = expandedSection == "connection",
+                                        onHeaderClick = { expandedSection = if (expandedSection == "connection") "" else "connection" }
+                                    )
+                                    DispensingSection(
+                                        uiState = uiState,
+                                        mixViewModel = mixViewModel,
+                                        settingsViewModel = settingsViewModel,
+                                        expanded = expandedSection == "dispensing",
+                                        onHeaderClick = { expandedSection = if (expandedSection == "dispensing") "" else "dispensing" },
+                                        onOpenRetractionTuner = { showRetractionCalibrator = true }
+                                    )
+                                    PumpSection(
+                                        uiState = uiState,
+                                        expanded = expandedSection == "pumps",
+                                        onHeaderClick = { expandedSection = if (expandedSection == "pumps") "" else "pumps" },
+                                        onShowAxisSelector = { showAxisSelectorForIndex = it },
+                                        onCalibrate = { calibrationChooserIndex = it },
+                                        onPrime = { showPrimeDialogForAxis = it },
+                                        onRefill = { showRefillDialogForIndex = it }
+                                    )
                                 }
                                 1 -> { // Mixing
-                                    item {
-                                        SpectralSection(
-                                            uiState = uiState,
-                                            settingsViewModel = settingsViewModel,
-                                            expanded = expandedSection == "spectral",
-                                            onHeaderClick = { expandedSection = if (expandedSection == "spectral") "" else "spectral" },
-                                            permissionsLauncher = permissionsLauncher,
-                                            onImportSpectralData = { spectralImportLauncher.launch(arrayOf("application/json")) }
-                                        )
-                                    }
-                                    item {
-                                        ColorMixingSection(
-                                            uiState = uiState,
-                                            settingsViewModel = settingsViewModel,
-                                            expanded = expandedSection == "colormix",
-                                            onHeaderClick = { expandedSection = if (expandedSection == "colormix") "" else "colormix" },
-                                            onEditKSValues = { showKubelkaMunkSettings = true }
-                                        )
-                                    }
+                                    SpectralSection(
+                                        uiState = uiState,
+                                        settingsViewModel = settingsViewModel,
+                                        expanded = expandedSection == "spectral",
+                                        onHeaderClick = { expandedSection = if (expandedSection == "spectral") "" else "spectral" },
+                                        permissionsLauncher = permissionsLauncher,
+                                        onImportSpectralData = { spectralImportLauncher.launch(arrayOf("application/json")) }
+                                    )
+                                    ColorMixingSection(
+                                        uiState = uiState,
+                                        settingsViewModel = settingsViewModel,
+                                        expanded = expandedSection == "colormix",
+                                        onHeaderClick = { expandedSection = if (expandedSection == "colormix") "" else "colormix" },
+                                        onEditKSValues = { showKubelkaMunkSettings = true }
+                                    )
                                 }
                                 2 -> { // System
-                                    item {
-                                        PulseSection(
-                                            uiState = uiState,
-                                            settingsViewModel = settingsViewModel,
-                                            expanded = expandedSection == "pulse",
-                                            onHeaderClick = { expandedSection = if (expandedSection == "pulse") "" else "pulse" },
-                                            onCalibratePump = { showPulseCalibrationForIndex = it }
-                                        )
-                                    }
-                                    item {
-                                        DisplaySection(
-                                            uiState = uiState,
-                                            settingsViewModel = settingsViewModel,
-                                            expanded = expandedSection == "display",
-                                            onHeaderClick = { expandedSection = if (expandedSection == "display") "" else "display" }
-                                        )
-                                    }
-                                    item {
-                                        DataSection(
-                                            expanded = expandedSection == "data",
-                                            onHeaderClick = { expandedSection = if (expandedSection == "data") "" else "data" },
-                                            onExport = { exportLauncher.launch("MeJustMix_Backup.zip") },
-                                            onImport = { importLauncher.launch(arrayOf("application/zip")) }
-                                        )
-                                    }
-                                    item {
-                                        DebugSection(
-                                            uiState = uiState,
-                                            settingsViewModel = settingsViewModel,
-                                            expanded = expandedSection == "debug",
-                                            onHeaderClick = { expandedSection = if (expandedSection == "debug") "" else "debug" }
-                                        )
-                                    }
+                                    PulseSection(
+                                        uiState = uiState,
+                                        settingsViewModel = settingsViewModel,
+                                        expanded = expandedSection == "pulse",
+                                        onHeaderClick = { expandedSection = if (expandedSection == "pulse") "" else "pulse" },
+                                        onCalibratePump = { showPulseCalibrationForIndex = it }
+                                    )
+                                    DisplaySection(
+                                        uiState = uiState,
+                                        settingsViewModel = settingsViewModel,
+                                        expanded = expandedSection == "display",
+                                        onHeaderClick = { expandedSection = if (expandedSection == "display") "" else "display" }
+                                    )
+                                    DataSection(
+                                        expanded = expandedSection == "data",
+                                        onHeaderClick = { expandedSection = if (expandedSection == "data") "" else "data" },
+                                        onExport = { exportLauncher.launch("MeJustMix_Backup.zip") },
+                                        onImport = { importLauncher.launch(arrayOf("application/zip")) }
+                                    )
+                                    DebugSection(
+                                        uiState = uiState,
+                                        settingsViewModel = settingsViewModel,
+                                        expanded = expandedSection == "debug",
+                                        onHeaderClick = { expandedSection = if (expandedSection == "debug") "" else "debug" }
+                                    )
                                 }
                             }
                         }
                      }
+
                 }
             }
         },

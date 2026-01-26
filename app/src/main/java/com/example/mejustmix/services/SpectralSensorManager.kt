@@ -77,7 +77,12 @@ class SpectralSensorManager(private val context: Context) {
             }
         }
         
+        try {
         scanner.startScan(scanCallback)
+    } catch (e: SecurityException) {
+        _connectionState.value = "Permission Denied"
+        return
+    }
         
         // Stop scan after 5s if not found
         Handler(Looper.getMainLooper()).postDelayed({
