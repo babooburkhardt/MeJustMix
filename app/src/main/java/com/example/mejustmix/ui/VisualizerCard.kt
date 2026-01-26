@@ -198,7 +198,11 @@ fun VisualizerCard(
                 when (currentTab) {
                     "Wheel" -> CircularColorPicker(color, { mixViewModel.setColor(it) }, pickerModifier)
                     "Photo" -> ImageColorPicker(images, { images = it }, { mixViewModel.setColor(it) }, { uri -> photoToSave = uri; showSavePhotoDialog = true }, pickerModifier, requestedImageUri, { mixViewModel.setCurrentImage(null) })
-                    "Camera" -> CameraColorPicker({ color -> mixViewModel.setColor(color); selectedTab = 0 }, { selectedTab = 0 })
+                    "Camera" -> CameraColorPicker(
+                        onColorPicked = { color -> mixViewModel.setColor(color); selectedTab = 0 },
+                        onClose = { selectedTab = 0 },
+                        modifier = Modifier.fillMaxWidth() // Camera has its own compact sizing
+                    )
                     "Sensor" -> SensorColorPicker(
                         settingsState = settingsState,
                         onTriggerScan = { settingsViewModel.triggerSpectralScan() },
