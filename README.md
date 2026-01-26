@@ -22,7 +22,7 @@ To build the full 5-pump mixer, you will need:
 * **5x** [Nema 17 Stepper Motors](https://a.co/d/8bX0HPr) (any Standard nema17 size, except **do not** use pancake motors)
 * **5x** [Compact Planetary Gear for Nema17](https://www.printables.com/@ZeVeX_22610) (4:1 ratio) - *See Credits below or description of MeJustMix on printables* 
 
-**Printed Parts**
+**Printed Parts** - I will set up a section on PCBway for a marketplace to get resin parts or FDM parts for those who dont own a printer.
 * **5x** 3D Printed Pumps (FDM reccomended, if using resin, you will need lube)
 * **5x** 3D Printed hose adapters (Must use resin or it WILL leak)
 * **1x** 3D Printed Housing (resin reccomende, but optional)
