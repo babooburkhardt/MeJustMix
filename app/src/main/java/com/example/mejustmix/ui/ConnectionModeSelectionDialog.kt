@@ -47,7 +47,10 @@ fun ConnectionModeSelectionDialog(
                 ConnectionModeCard(
                     icon = Icons.Default.Bluetooth,
                     title = "Bluetooth (BLE)",
-                    description = "Auto-connect when nearby. Requires location permission.",
+                    description = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S) 
+                        "Auto-connect when nearby. Requires 'Nearby Devices' permission."
+                    else 
+                        "Auto-connect when nearby. Requires location permission.",
                     isSelected = selectedMode == ConnectionType.BLE,
                     onClick = { selectedMode = ConnectionType.BLE }
                 )
@@ -188,6 +191,25 @@ fun BLEPermissionExplanationDialog(
     onUseWiFiInstead: () -> Unit,
     onDismiss: () -> Unit
 ) {
+    val isAndroid12OrLater = android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S
+    
+    val title = if (isAndroid12OrLater) "Nearby Devices Permission" else "Location Permission Required"
+    val mainText = if (isAndroid12OrLater) 
+        "To connect to the mixer via Bluetooth, Android requires the 'Nearby Devices' permission."
+    else
+        "To use Bluetooth, Android requires location permission."
+        
+    val reasonTitle = if (isAndroid12OrLater) "Why?" else "Why Location?"
+    val reasonText = if (isAndroid12OrLater)
+        "This allows the app to find and connect to your MeJustMix device without knowing your physical location."
+    else
+        "Bluetooth can be used to determine your location. Android requires this permission to protect your privacy, even though this app doesn't use location data."
+
+    val privacyText = if (isAndroid12OrLater)
+        "We only use this to talk to your mixer. No location data is accessed."
+    else
+        "This app does not track or store your location. The permission is only used to scan for Bluetooth devices."
+
     AlertDialog(
         onDismissRequest = onDismiss,
         icon = {
@@ -200,7 +222,7 @@ fun BLEPermissionExplanationDialog(
         },
         title = { 
             Text(
-                "Location Permission Required",
+                title,
                 style = MaterialTheme.typography.titleLarge,
                 fontWeight = FontWeight.Bold
             ) 
@@ -211,20 +233,20 @@ fun BLEPermissionExplanationDialog(
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
                 Text(
-                    "To use Bluetooth, Android requires location permission.",
+                    mainText,
                     style = MaterialTheme.typography.bodyLarge
                 )
                 
                 Spacer(modifier = Modifier.height(4.dp))
                 
                 Text(
-                    "Why?",
+                    reasonTitle,
                     style = MaterialTheme.typography.titleSmall,
                     fontWeight = FontWeight.Bold
                 )
                 
                 Text(
-                    "Bluetooth can be used to determine your location. Android requires this permission to protect your privacy, even though this app doesn't use location data.",
+                    reasonText,
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -246,7 +268,7 @@ fun BLEPermissionExplanationDialog(
                             color = MaterialTheme.colorScheme.onTertiaryContainer
                         )
                         Text(
-                            "This app does not track or store your location. The permission is only used to scan for Bluetooth devices.",
+                            privacyText,
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onTertiaryContainer
                         )

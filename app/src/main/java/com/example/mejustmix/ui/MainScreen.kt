@@ -62,22 +62,23 @@ fun MainScreen() {
         uri?.let { settingsViewModel.importSpectralData(it) }
     }
     
-    // Location permission launcher for BLE
-    val locationPermissionLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.RequestPermission()
-    ) { isGranted ->
-        if (isGranted) {
-            // Permission granted - start BLE scan
-            settingsViewModel.startBLEScan()
-            Toast.makeText(context, "Bluetooth enabled. Scanning for devices...", Toast.LENGTH_SHORT).show()
+    // Unified permission launcher for BLE
+    val multiplePermissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestMultiplePermissions()
+    ) { perms ->
+        // Check if we have what we need based on Android version
+        val isGranted = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S) {
+            perms[Manifest.permission.BLUETOOTH_SCAN] == true && perms[Manifest.permission.BLUETOOTH_CONNECT] == true
         } else {
-            // Permission denied - fall back to WiFi
+            perms[Manifest.permission.ACCESS_FINE_LOCATION] == true
+        }
+
+        if (isGranted) {
+            settingsViewModel.startBLEScan()
+            Toast.makeText(context, "Bluetooth enabled. Scanning...", Toast.LENGTH_SHORT).show()
+        } else {
             settingsViewModel.setConnectionMode(ConnectionType.WIFI)
-            Toast.makeText(
-                context,
-                "Location permission denied. Using WiFi mode.",
-                Toast.LENGTH_LONG
-            ).show()
+            Toast.makeText(context, "Permissions denied. Using WiFi.", Toast.LENGTH_LONG).show()
         }
     }
     
@@ -121,9 +122,19 @@ fun MainScreen() {
     if (showBLEPermissionDialog) {
         BLEPermissionExplanationDialog(
             onRequestPermission = {
-                // User agreed - request location permission
-                locationPermissionLauncher.launch(Manifest.permission.ACCESS_FINE_LOCATION)
                 showBLEPermissionDialog = false
+                if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S) {
+                    multiplePermissionLauncher.launch(
+                        arrayOf(
+                            Manifest.permission.BLUETOOTH_SCAN,
+                            Manifest.permission.BLUETOOTH_CONNECT
+                        )
+                    )
+                } else {
+                    multiplePermissionLauncher.launch(
+                        arrayOf(Manifest.permission.ACCESS_FINE_LOCATION)
+                    )
+                }
             },
             onUseWiFiInstead = {
                 // User chose WiFi instead
@@ -232,10 +243,11 @@ fun MainScreen() {
     }
 
     val visualizerContent = remember(mixViewModel) {
-        movableContentOf<Boolean> { fillHeight ->
+        movableContentOf<Boolean> { showDispenseControls ->
             VisualizerCard(
                 mixViewModel = mixViewModel, 
-                fillHeight = fillHeight,
+                fillHeight = !showDispenseControls, // Fill height only when controls are hidden (Tablet)
+                showDispenseControls = showDispenseControls,
                 onImportSpectralData = { spectralImportLauncher.launch(arrayOf("text/csv", "text/comma-separated-values", "*/*")) }
             )
         }
@@ -313,7 +325,8 @@ fun MainScreen() {
                                 .fillMaxHeight() 
                                 .padding(end = 8.dp) 
                         ) {
-                            visualizerContent(true)
+                            // HIDE dispense controls inside the card
+                            visualizerContent(false) 
                         }
 
                         Column(
@@ -322,6 +335,12 @@ fun MainScreen() {
                                 .verticalScroll(rememberScrollState())
                                 .padding(start = 8.dp)
                         ) {
+                            // SHOW dispense controls here at the top
+                            Column(modifier = Modifier.padding(start = 16.dp, end = 24.dp, top = 24.dp)) {
+                                DispenseInterface(mixViewModel, settingsViewModel)
+                            }
+                            Spacer(modifier = Modifier.height(16.dp))
+                            
                             controlsContent()
                         }
                     }
@@ -347,7 +366,7 @@ fun MainScreen() {
                             context.startActivity(shareIntent)
                         }
                     )
-                    visualizerContent(false)
+                    visualizerContent(true)
                     
                     controlsContent()
                 }

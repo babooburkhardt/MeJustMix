@@ -53,6 +53,7 @@ import kotlin.math.roundToInt
 fun VisualizerCard(
     mixViewModel: MixViewModel, 
     fillHeight: Boolean = false,
+    showDispenseControls: Boolean = true,
     settingsViewModel: SettingsViewModel = viewModel(),
     onImportSpectralData: () -> Unit = {}
 ) {
@@ -83,7 +84,6 @@ fun VisualizerCard(
     )
 
     var images by rememberSaveable(stateSaver = uriListSaver) { mutableStateOf(emptyList()) }
-    var showManualBaseDialog by rememberSaveable { mutableStateOf(false) }
     var showSavePhotoDialog by remember { mutableStateOf(false) }
     var photoToSave by remember { mutableStateOf<Uri?>(null) }
 
@@ -106,20 +106,6 @@ fun VisualizerCard(
                 mixViewModel.savePhotoToLibrary(folderName, photoToSave!!)
                 showSavePhotoDialog = false
                 photoToSave = null
-            }
-        )
-    }
-
-    if (showManualBaseDialog) {
-        ManualBaseDialog(
-            mixViewModel = mixViewModel,
-            totalVolume = totalVolume,
-            onDismissRequest = { showManualBaseDialog = false },
-            onConfirm = { name, transp, incWhite ->
-                mixViewModel.manualBaseName.value = name
-                mixViewModel.manualTransparency.value = transp
-                mixViewModel.includeWhitePump.value = incWhite
-                showManualBaseDialog = false
             }
         )
     }
@@ -239,71 +225,106 @@ fun VisualizerCard(
                 Spacer(modifier = Modifier.height(16.dp))
             }
 
-            val isEnabled = mixViewModel.isMixPossible(totalVolume)
-            val needsRefill = mixViewModel.needsRefill(totalVolume)
-            val isManualMode = mixViewModel.manualBaseName.value != null
-            val cornerShape = RoundedCornerShape(12.dp)
+            if (showDispenseControls) {
+                DispenseInterface(mixViewModel, settingsViewModel)
+            }
+        }
+    }
+}
 
-            Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                Surface(
-                    modifier = Modifier
-                        .weight(1f)
-                        .height(56.dp)
-                        .shadow(8.dp, cornerShape)
-                        .combinedClickable(
-                            onClick = { if (isEnabled) mixViewModel.sendMix() },
-                            onLongClick = { if (isManualMode) mixViewModel.clearManualMode() else showManualBaseDialog = true }
-                        ),
-                    shape = cornerShape,
-                    color = if (isEnabled) buttonColor else Color.Red,
-                    contentColor = if (isEnabled) contentColor else Color.Black,
-                    border = if (isEnabled) BorderStroke(2.dp, contentColor) else null,
-                ) {
-                    Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            if (isEnabled) {
-                                Icon(Icons.Filled.Science, contentDescription = null)
-                                Spacer(modifier = Modifier.size(8.dp))
-                                Text("DISPENSE COLORS", fontSize = 16.sp, fontWeight = FontWeight.Black)
-                            } else {
-                                // Show specific error message
-                                val errorMessage = if (needsRefill) "Please Refill" else "Not Connected"
-                                Text(errorMessage, fontSize = 18.sp, fontWeight = FontWeight.Bold)
-                            }
-                        }
-                    }
-                }
+@Composable
+fun DispenseInterface(
+    mixViewModel: MixViewModel,
+    settingsViewModel: SettingsViewModel
+) {
+    val color by mixViewModel.color.collectAsState()
+    val totalVolume by mixViewModel.totalVolume.collectAsState()
+    
+    // Use screen color for dispense button instead of predicted color
+    val buttonColor = color
+    val contentColor = if (buttonColor.getBrightness() > 0.5f) Color.Black else Color.White
+    
+    var showManualBaseDialog by rememberSaveable { mutableStateOf(false) }
 
-                AnimatedVisibility(visible = isManualMode, enter = expandHorizontally() + fadeIn(), exit = shrinkHorizontally() + fadeOut()) {
-                    Row {
-                        Spacer(modifier = Modifier.width(12.dp))
-                        val transp = mixViewModel.manualTransparency.value
-                        val manualVol = totalVolume * transp
-                        val basePercent = (transp * 100).roundToInt()
-                        
-                        Column(
-                            modifier = Modifier
-                                .width(80.dp)
-                                .height(56.dp)
-                                .shadow(2.dp, cornerShape)
-                                .background(Color.White, cornerShape)
-                                .border(1.dp, Color.LightGray, cornerShape)
-                                .clip(cornerShape)
-                                .combinedClickable(onClick = { showManualBaseDialog = true }, onLongClick = { showManualBaseDialog = true }),
-                            horizontalAlignment = Alignment.CenterHorizontally,
-                            verticalArrangement = Arrangement.Center
-                        ) {
-                            Text("BASE", style = TextStyle(fontSize = 10.sp, fontWeight = FontWeight.Black), color = Color.Gray)
-                            Text("$basePercent%", style = TextStyle(fontSize = 14.sp, fontWeight = FontWeight.Bold), color = Color.Black)
-                            Text("${String.format("%.1f", manualVol)}ml", style = TextStyle(fontSize = 10.sp), color = Color.Gray)
+    if (showManualBaseDialog) {
+        ManualBaseDialog(
+            mixViewModel = mixViewModel,
+            totalVolume = totalVolume,
+            onDismissRequest = { showManualBaseDialog = false },
+            onConfirm = { name, transp, incWhite ->
+                mixViewModel.manualBaseName.value = name
+                mixViewModel.manualTransparency.value = transp
+                mixViewModel.includeWhitePump.value = incWhite
+                showManualBaseDialog = false
+            }
+        )
+    }
+
+    val isEnabled = mixViewModel.isMixPossible(totalVolume)
+    val needsRefill = mixViewModel.needsRefill(totalVolume)
+    val isManualMode = mixViewModel.manualBaseName.value != null
+    val cornerShape = RoundedCornerShape(12.dp)
+
+    Column {
+        Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+            Surface(
+                modifier = Modifier
+                    .weight(1f)
+                    .height(56.dp)
+                    .shadow(8.dp, cornerShape)
+                    .combinedClickable(
+                        onClick = { if (isEnabled) mixViewModel.sendMix() },
+                        onLongClick = { if (isManualMode) mixViewModel.clearManualMode() else showManualBaseDialog = true }
+                    ),
+                shape = cornerShape,
+                color = if (isEnabled) buttonColor else Color.Red,
+                contentColor = if (isEnabled) contentColor else Color.Black,
+                border = if (isEnabled) BorderStroke(2.dp, contentColor) else null,
+            ) {
+                Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        if (isEnabled) {
+                            Icon(Icons.Filled.Science, contentDescription = null)
+                            Spacer(modifier = Modifier.size(8.dp))
+                            Text("DISPENSE COLORS", fontSize = 16.sp, fontWeight = FontWeight.Black)
+                        } else {
+                            // Show specific error message
+                            val errorMessage = if (needsRefill) "Please Refill" else "Not Connected"
+                            Text(errorMessage, fontSize = 18.sp, fontWeight = FontWeight.Bold)
                         }
                     }
                 }
             }
 
-            Spacer(modifier = Modifier.height(16.dp))
-            VolumeSelection(mixViewModel = mixViewModel, settingsViewModel = settingsViewModel)
+            AnimatedVisibility(visible = isManualMode, enter = expandHorizontally() + fadeIn(), exit = shrinkHorizontally() + fadeOut()) {
+                Row {
+                    Spacer(modifier = Modifier.width(12.dp))
+                    val transp = mixViewModel.manualTransparency.value
+                    val manualVol = totalVolume * transp
+                    val basePercent = (transp * 100).roundToInt()
+                    
+                    Column(
+                        modifier = Modifier
+                            .width(80.dp)
+                            .height(56.dp)
+                            .shadow(2.dp, cornerShape)
+                            .background(Color.White, cornerShape)
+                            .border(1.dp, Color.LightGray, cornerShape)
+                            .clip(cornerShape)
+                            .combinedClickable(onClick = { showManualBaseDialog = true }, onLongClick = { showManualBaseDialog = true }),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.Center
+                    ) {
+                        Text("BASE", style = TextStyle(fontSize = 10.sp, fontWeight = FontWeight.Black), color = Color.Gray)
+                        Text("$basePercent%", style = TextStyle(fontSize = 14.sp, fontWeight = FontWeight.Bold), color = Color.Black)
+                        Text("${String.format("%.1f", manualVol)}ml", style = TextStyle(fontSize = 10.sp), color = Color.Gray)
+                    }
+                }
+            }
         }
+
+        Spacer(modifier = Modifier.height(16.dp))
+        VolumeSelection(mixViewModel = mixViewModel, settingsViewModel = settingsViewModel)
     }
 }
 
