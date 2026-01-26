@@ -9,8 +9,58 @@ import kotlin.math.pow
 import kotlin.math.sqrt
 
 /**
- * Pure Math Engine for Color Physics.
- * Handles K/S Conversions, Gamma Correction, and Optical Mixing.
+ * Pure Math Engine for Color Physics using Kubelka-Munk (K-M) theory.
+ * 
+ * ## Overview
+ * 
+ * This engine handles the mathematical core of subtractive color mixing,
+ * which is fundamentally different from additive (RGB) mixing used in displays.
+ * When paints mix, they absorb light (subtractive), so mixing cyan and yellow
+ * produces green, not white as in additive RGB.
+ * 
+ * ## Kubelka-Munk Theory
+ * 
+ * K-M theory models how light interacts with pigmented layers:
+ * 
+ * - **K (Absorption Coefficient)**: How much light the pigment absorbs
+ * - **S (Scattering Coefficient)**: How much light the pigment scatters back
+ * - **K/S ratio**: The key parameter that can be calculated from reflectance
+ * 
+ * The fundamental K-M equation relates reflectance R to K/S:
+ * ```
+ * K/S = (1 - R)² / (2R)
+ * ```
+ * 
+ * And the inverse:
+ * ```
+ * R = 1 + K/S - √((K/S)² + 2(K/S))
+ * ```
+ * 
+ * ## Why This Matters for Paint Mixing
+ * 
+ * RGB mixing assumes light is additive. But paint mixing is subtractive:
+ * - RGB: Red + Green = Yellow (light adds up)
+ * - Paint: Red + Green = Brown (pigments absorb each other's reflected light)
+ * 
+ * K-M theory correctly models this by:
+ * 1. Converting RGB colors to K/S values (light absorption/scattering ratios)
+ * 2. Mixing K/S values linearly (which IS physically additive for absorption)
+ * 3. Converting the mixed K/S back to RGB for display
+ * 
+ * ## Implementation Details
+ * 
+ * This implementation uses a 3-channel (RGB) approximation of K-M theory,
+ * which provides excellent results for typical paint colors. For research-grade
+ * accuracy, see [SpectralKubelkaMunk] which uses full 31-wavelength spectra.
+ * 
+ * Key features:
+ * - sRGB ↔ Linear conversion for correct gamma handling
+ * - Special handling for white pigment's dominant scattering behavior
+ * - Calibration support for determining pigment scattering coefficients
+ * 
+ * @see KubelkaMunkColorMixing for the high-level mixing API
+ * @see SpectralKubelkaMunk for 31-wavelength spectral implementation
+ * @see KSColor for the K/S color representation
  */
 object ColorPhysicsEngine {
     
@@ -47,11 +97,58 @@ object ColorPhysicsEngine {
     // CORE K-M FORMULAS
     // ========================================================================
     
+    /**
+     * Converts linear reflectance to K/S ratio using the Kubelka-Munk equation.
+     * 
+     * The K-M equation: `K/S = (1 - R)² / (2R)`
+     * 
+     * This converts how much light bounces back (reflectance) into the ratio
+     * of absorption to scattering, which is the fundamental quantity for mixing.
+     * 
+     * @param reflectance Linear reflectance value (0.0 to 1.0, typically from sRGB→Linear conversion)
+     * @return K/S ratio. Higher values = more absorbing (darker). 0 = perfect white.
+     * 
+     * @throws IllegalArgumentException if reflectance is outside 0.01-0.99 (clamped internally)
+     * 
+     * ## Example
+     * ```kotlin
+     * // Pure white (R=1.0) → K/S ≈ 0 (no absorption)
+     * reflectanceToKS(1.0f) // ≈ 0.0
+     * 
+     * // Pure black (R=0.0) → K/S ≈ ∞ (total absorption)
+     * reflectanceToKS(0.01f) // ≈ 49.0
+     * 
+     * // Mid-gray (R=0.5) → K/S = 0.25
+     * reflectanceToKS(0.5f) // = 0.25
+     * ```
+     */
     fun reflectanceToKS(reflectance: Float): Float {
         val R = reflectance.coerceIn(0.01f, 0.99f)
         return (1f - R).pow(2f) / (2f * R)
     }
     
+    /**
+     * Converts K/S ratio back to linear reflectance using the inverse K-M equation.
+     * 
+     * The inverse equation: `R = 1 + K/S - √((K/S)² + 2(K/S))`
+     * 
+     * This converts the mixed K/S ratio back to a displayable reflectance value.
+     * 
+     * @param ks K/S ratio (0 to ∞, clamped to 50 for numerical stability)
+     * @return Linear reflectance (0.0 to 1.0), ready for Linear→sRGB conversion
+     * 
+     * ## Example
+     * ```kotlin
+     * // K/S = 0 (pure white) → R = 1.0
+     * ksToReflectance(0f) // = 1.0
+     * 
+     * // K/S = 0.25 → R = 0.5 (mid-gray)
+     * ksToReflectance(0.25f) // = 0.5
+     * 
+     * // K/S = 10 (very dark) → R ≈ 0.08
+     * ksToReflectance(10f) // ≈ 0.08
+     * ```
+     */
     fun ksToReflectance(ks: Float): Float {
         val safeKS = ks.coerceIn(0f, 50f)
         return (1f + safeKS - sqrt(safeKS * safeKS + 2f * safeKS)).coerceIn(0f, 1f)

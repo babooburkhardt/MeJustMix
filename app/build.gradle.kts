@@ -2,6 +2,8 @@ plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
     alias(libs.plugins.kotlin.compose)
+    alias(libs.plugins.ksp)
+    alias(libs.plugins.hilt.android)
     id("org.jetbrains.kotlin.plugin.serialization")
 }
 
@@ -72,6 +74,14 @@ dependencies {
     
     // Accompanist for permissions
     implementation("com.google.accompanist:accompanist-permissions:0.32.0")
+    
+    // Hilt Dependency Injection
+    implementation(libs.hilt.android)
+    ksp(libs.hilt.compiler)
+    implementation(libs.hilt.navigation.compose)
+    
+    // Timber Logging
+    implementation(libs.timber)
     
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)

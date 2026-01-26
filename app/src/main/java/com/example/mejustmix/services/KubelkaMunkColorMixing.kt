@@ -9,11 +9,72 @@ import kotlin.math.pow
 import kotlin.math.sqrt
 
 /**
- * [DEPRECATED FACADE]
- * This object now delegates to:
- * - ColorPhysicsEngine (Math)
- * - SpectralMath (Sensor Conversions)
- * - KSPigmentRepository (Data)
+ * High-level API for Kubelka-Munk color mixing calculations.
+ * 
+ * ## What This Does
+ * 
+ * This object provides the main entry point for calculating paint mix ratios
+ * that will produce a target color. It uses Kubelka-Munk (K-M) theory to model
+ * how pigments actually mix in the real world (subtractive mixing), which is
+ * fundamentally different from how colors mix on screens (additive RGB).
+ * 
+ * ## Why Not Just RGB?
+ * 
+ * If you mix red and green paint in equal parts, you get brown - not yellow
+ * like RGB would predict. K-M theory correctly models this because:
+ * 
+ * - RGB assumes light adds up (screens emit light)
+ * - Paint absorbs light (pigments subtract wavelengths)
+ * - K-M models the physics of light absorption and scattering
+ * 
+ * ## Key Features
+ * 
+ * 1. **Accurate Earth Tones**: Browns, grays, and muted colors mix correctly
+ * 2. **White Handling**: Properly models how white pigment lightens colors
+ * 3. **Calibration Support**: Can be tuned for specific pigments via hex codes
+ * 4. **Optimization**: Iteratively finds the best CMYKW ratios for any target
+ * 
+ * ## Architecture
+ * 
+ * This facade delegates to specialized components:
+ * - [ColorPhysicsEngine]: Core K-M math (K/S conversions, gamma, mixing)
+ * - [SpectralMath]: Spectral sensor data processing
+ * - [KSPigmentRepository]: Pigment database and calibration
+ * 
+ * ## Usage Example
+ * 
+ * ```kotlin
+ * // Get the default pigment database
+ * val database = KubelkaMunkColorMixing.createDefaultPigmentDatabase()
+ * 
+ * // Calculate mix ratios for coral pink (#FF7F7F)
+ * val targetColor = Color.parseColor("#FF7F7F")
+ * val mix = KubelkaMunkColorMixing.calculateMixRatios(targetColor, database)
+ * 
+ * // Result: PaintMix(cyan=0.0, magenta=0.25, yellow=0.15, black=0.0, white=0.60)
+ * // The mix correctly includes ~60% white to achieve the pastel tone!
+ * 
+ * // Preview what the mixed color will look like
+ * val preview = KubelkaMunkColorMixing.previewMixedColor(mix, database)
+ * ```
+ * 
+ * ## Calibration Workflow
+ * 
+ * For best results, calibrate your specific pigments:
+ * 
+ * 1. Paint a swatch of each pure pigment (masstone)
+ * 2. Use a color picker or scanner to get the hex code
+ * 3. Call [rgbToKS] to convert to K/S values
+ * 4. Store in a [KSPigmentDatabase]
+ * 
+ * For tinted calibration (more accurate):
+ * 1. Mix each pigment 50/50 with white
+ * 2. Scan both masstone and tint
+ * 3. Use [solveScattering] to determine the scattering coefficient
+ * 
+ * @see ColorPhysicsEngine for the underlying K-M math
+ * @see SpectralKubelkaMunk for 31-wavelength spectral implementation
+ * @see PaintMix for the output mix ratio format
  */
 object KubelkaMunkColorMixing {
 
