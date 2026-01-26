@@ -112,7 +112,8 @@ class SpectralSensorManager(private val context: Context) {
     
     private fun sendScanCommand() {
         if (bluetoothGatt != null && controlCharacteristic != null) {
-            controlCharacteristic!!.value = byteArrayOf(1)
+            val commandByte: Byte = if (expectedSensorType == "AS7265x") 2 else 1
+            controlCharacteristic!!.value = byteArrayOf(commandByte)
             bluetoothGatt!!.writeCharacteristic(controlCharacteristic)
         }
     }
@@ -182,33 +183,44 @@ class SpectralSensorManager(private val context: Context) {
         }
     }
 
+    private var expectedSensorType: String = "AS7341"
+
+    fun setSensorType(type: String) {
+        expectedSensorType = type
+    }
+
     private fun parseData(csv: String) {
         try {
             val values = csv.split(",").map { it.toFloat() }
-            // Support both AS7265x (18) and AS7341 (10)
-            if (values.size == 18 || values.size == 10) {
-                
+            
+            // Validate against expected sensor type
+            val isValid = when (expectedSensorType) {
+                "AS7341" -> values.size == 10
+                "AS7265x" -> values.size == 18
+                else -> false
+            }
+
+            if (isValid) {
                 if (pendingScans > 0) {
                     scanBuffer.add(values)
                     pendingScans--
                     
                     if (pendingScans > 0) {
                         // Request next sample after minimal delay
-                        // Sensor takes ~100ms to integration. 
-                        // 10ms delay gives just enough breathing room for BLE stack.
                         Handler(Looper.getMainLooper()).postDelayed({
                              sendScanCommand()
-                        }, 10)  // Tight timing: 100ms scan + 10ms delay = ~9Hz
+                        }, 10) 
                         _connectionState.value = "Sampling... ($pendingScans left)"
                     } else {
-                        // All Done
                         processBuffer()
                     }
                 } else {
-                    // Single shot or unsolicited data
                     _lastReading.value = values
-                    _connectionState.value = "Single Reading Received (${values.size} ch)"
+                    _connectionState.value = "Reading Received (${values.size} ch)"
                 }
+            } else {
+                Log.w("Spectral", "Sensor Mismatch: Expected $expectedSensorType but got ${values.size} channels")
+                _connectionState.value = "Error: Wrong Sensor Type (${values.size} ch)"
             }
         } catch (e: Exception) {
             Log.e("Spectral", "Parse Error: $csv")

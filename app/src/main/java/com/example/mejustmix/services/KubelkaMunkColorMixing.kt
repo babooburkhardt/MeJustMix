@@ -82,17 +82,43 @@ object KubelkaMunkColorMixing {
         var noImprovementCount = 0
         
         // 1. "Zero-Tolerance" White Check (Multi-Point Initialization)
-        // actively scans for the "sweet spot" of white pigment before starting the main loop.
-        // We test 0.5%, 1%, 2.5%, and 5% white to see if any of them beat the "pure" guess.
-        if (bestMix.white < 0.005f) {
-            val whiteCandidates = listOf(0.005f, 0.01f, 0.025f, 0.05f)
-            for (w in whiteCandidates) {
-                val testMix = normalize(bestMix.copy(white = w))
-                val testError = calculateLabError(testMix, targetLab, pigmentDatabase)
-                if (testError < bestError) {
-                    bestMix = testMix
-                    bestError = testError
-                }
+        // Actively scans for the "sweet spot" of white pigment before starting the main loop.
+        // IMPROVED: Expanded range to catch pastels that need 40-80% white.
+        // Also runs even if initial guess has some white, to escape local minima.
+        
+        // Detect if this target likely needs white:
+        // - L* > 50 means mid-tone or lighter
+        // - OR high RGB values (bright saturated colors) even if LAB L* is low
+        //   (because saturated reds have low L* but still need white to achieve brightness)
+        val r = Color.red(targetColorInt) / 255f
+        val g = Color.green(targetColorInt) / 255f  
+        val b = Color.blue(targetColorInt) / 255f
+        val maxRgb = maxOf(r, g, b)
+        val isBrightSaturated = maxRgb > 0.85f // Very bright primary channel
+        
+        val isLightTarget = targetLab[0] > 50 || isBrightSaturated
+        
+        // Wider candidate range for light/bright colors
+        val whiteCandidates = if (isLightTarget) {
+            listOf(0.05f, 0.1f, 0.15f, 0.2f, 0.25f, 0.3f, 0.4f, 0.5f, 0.6f, 0.7f)
+        } else {
+            listOf(0.005f, 0.01f, 0.025f, 0.05f, 0.1f)
+        }
+        
+        for (w in whiteCandidates) {
+            // Scale down chromatic pigments proportionally when testing more white
+            val chromaticScale = 1f - w * 0.5f // Reduce chromatics as white increases
+            val testMix = normalize(PaintMix(
+                cyan = bestMix.cyan * chromaticScale,
+                magenta = bestMix.magenta * chromaticScale,
+                yellow = bestMix.yellow * chromaticScale,
+                black = bestMix.black * chromaticScale,
+                white = w
+            ))
+            val testError = calculateLabError(testMix, targetLab, pigmentDatabase)
+            if (testError < bestError) {
+                bestMix = testMix
+                bestError = testError
             }
         }
         
@@ -198,6 +224,11 @@ object KubelkaMunkColorMixing {
         val g = ColorPhysicsEngine.srgbToLinear(Color.green(targetColorInt) / 255f)
         val b = ColorPhysicsEngine.srgbToLinear(Color.blue(targetColorInt) / 255f)
         
+        // Also get LAB for perceptual lightness
+        val targetLab = DoubleArray(3)
+        ColorUtils.colorToLAB(targetColorInt, targetLab)
+        val labLightness = targetLab[0].toFloat() / 100f // Normalize to 0-1
+        
         val c = 1f - r
         val m = 1f - g
         val y = 1f - b
@@ -213,17 +244,35 @@ object KubelkaMunkColorMixing {
             0f
         }
         
-        // 3. Improved White Guess Logic
-        // Old: lightness > 0.7f (Too strict, missed mid-tones)
-        // New: lightness > 0.4f OR significantly desaturated colors (high minRGB)
-        // "Tad light" colors often fall in the 0.5-0.7 range.
+        // IMPROVED White Guess: Use LAB L* for perceptually accurate lightness assessment
+        // Real-world pastels typically need 50-80% white by volume.
+        // The key insight: LAB L* > 70 means the color WILL need significant white.
+        val saturation = if (maxRGB > 0) (maxRGB - minRGB) / maxRGB else 0f
+        
         val w = when {
-            lightness > 0.4f -> (lightness - 0.3f) * 0.8f // Aggressively suggest white for anything not dark
-            minRGB > 0.2f -> minRGB * 0.5f // If the darkest channel is lit, we probably need white
+            // Very light colors (pastels): L* > 80 → aggressive white (60-85%)
+            labLightness > 0.80f -> 0.6f + (labLightness - 0.8f) * 1.25f
+            
+            // Light colors: L* 65-80 → moderate white (35-60%)
+            labLightness > 0.65f -> 0.35f + (labLightness - 0.65f) * 1.67f
+            
+            // Mid-tones: L* 50-65 → some white needed (15-35%), especially if desaturated
+            labLightness > 0.50f -> {
+                val baseWhite = 0.15f + (labLightness - 0.5f) * 1.33f
+                // Desaturated colors need more white
+                val desatBoost = if (saturation < 0.3f) (0.3f - saturation) * 0.3f else 0f
+                baseWhite + desatBoost
+            }
+            
+            // Darker colors: L* 35-50 → minimal white, more if desaturated
+            labLightness > 0.35f -> {
+                if (saturation < 0.2f) (0.2f - saturation) * 0.3f else 0f
+            }
+            
+            // Very dark: no white
             else -> 0f
         }
         
-        val saturation = if (maxRGB > 0) (maxRGB - minRGB) / maxRGB else 0f
         val pigmentScale = 0.3f + saturation * 0.5f
         
         return normalize(PaintMix(
@@ -250,7 +299,24 @@ object KubelkaMunkColorMixing {
         val dA = (targetLab[1] - mixedLab[1]).toFloat()
         val dB = (targetLab[2] - mixedLab[2]).toFloat()
         
-        return sqrt(dL * dL + dA * dA + dB * dB)
+        // IMPROVED: Lightness-weighted error for pastel accuracy
+        // At high target lightness (L* > 70), lightness errors are weighted more heavily.
+        // This forces the optimizer to add more white for light/pastel colors.
+        // Without this, the optimizer finds "close enough" dark matches and stops.
+        val lightnessWeight = if (targetLab[0] > 70) {
+            // Scale from 1.0 at L*=70 to 2.5 at L*=100
+            1.0f + (targetLab[0].toFloat() - 70f) / 30f * 1.5f
+        } else {
+            1.0f
+        }
+        
+        // Also penalize being TOO DARK more than being too light
+        // (since underestimating white is the common failure mode)
+        val darknessPenalty = if (dL > 0) 1.2f else 1.0f // Target is lighter than mix = penalty
+        
+        val weightedDL = dL * lightnessWeight * darknessPenalty
+        
+        return sqrt(weightedDL * weightedDL + dA * dA + dB * dB)
     }
     
     fun calculateMixedKS(mix: PaintMix, database: KSPigmentDatabase): KSColor {

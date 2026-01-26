@@ -13,6 +13,35 @@ import kotlin.math.sqrt
  * Handles K/S Conversions, Gamma Correction, and Optical Mixing.
  */
 object ColorPhysicsEngine {
+    
+    // ========================================================================
+    // TUNABLE CONSTANTS
+    // ========================================================================
+    
+    /**
+     * White Scattering Boost Factor.
+     * 
+     * In real Kubelka-Munk theory, white pigments (like TiO2) have:
+     * - Very low K (absorption coefficient) ≈ 0.001-0.01
+     * - Very HIGH S (scattering coefficient) ≈ 10-50x chromatic pigments
+     * 
+     * When calibrating via hex codes (masstone/tint method), we only capture
+     * the K/S RATIO, not the individual K and S values. This means white's
+     * true scattering power is lost.
+     * 
+     * This boost factor compensates by making white pigment contribute more
+     * to the scattering sum during mixing, which properly dilutes the K/S
+     * of chromatic pigments and achieves correct lightening.
+     * 
+     * Tuning guidelines:
+     * - Too low (< 5): Pastels will be too dark, not enough white
+     * - Too high (> 15): Colors will wash out, white overpowers
+     * - Sweet spot for typical dye paints: 6-10
+     * 
+     * If using spectrometer calibration with true K and S values,
+     * set this to 1.0 and let the measured S values handle it.
+     */
+    var whiteScatteringBoost: Float = 8.0f
 
     // ========================================================================
     // CORE K-M FORMULAS
@@ -56,6 +85,15 @@ object ColorPhysicsEngine {
 
     /**
      * Optical Mixing: Additive mixing of K and S coefficients.
+     * 
+     * IMPROVED: White pigment is now handled specially to account for its
+     * dominant scattering behavior. In K-M theory, white lightens by contributing
+     * high S (scattering) with low K (absorption), which dilutes the K/S ratio
+     * of the mixture more than standard pigments.
+     * 
+     * The white scattering boost factor compensates for the fact that hex-based
+     * calibration underestimates white's true lightening power.
+     * 
      * returns: The resulting K/S color of the mix.
      */
     fun mixPigments(pigments: List<KSColor>, concentrations: List<Float>): KSColor {
@@ -68,10 +106,27 @@ object ColorPhysicsEngine {
             val c = concentrations.getOrElse(i) { 0f }.coerceAtLeast(0f)
             val S = pigment.s
             
-            totalS += c * S
-            sumK_R += c * pigment.ksR * S
-            sumK_G += c * pigment.ksG * S
-            sumK_B += c * pigment.ksB * S
+            // Detect white pigment: very low K/S across all channels
+            val isWhitePigment = pigment.ksR < 0.05f && pigment.ksG < 0.05f && pigment.ksB < 0.05f
+            
+            if (isWhitePigment) {
+                // White's scattering contribution is boosted to match real-world behavior.
+                // Real TiO2 has S values 10-50x higher than chromatic pigments.
+                // This boost factor compensates for hex-calibration limitations.
+                // See whiteScatteringBoost documentation for tuning guidelines.
+                val effectiveS = S * whiteScatteringBoost
+                
+                totalS += c * effectiveS
+                sumK_R += c * pigment.ksR * effectiveS
+                sumK_G += c * pigment.ksG * effectiveS
+                sumK_B += c * pigment.ksB * effectiveS
+            } else {
+                // Chromatic pigments: use calibrated K/S values directly
+                totalS += c * S
+                sumK_R += c * pigment.ksR * S
+                sumK_G += c * pigment.ksG * S
+                sumK_B += c * pigment.ksB * S
+            }
         }
 
         if (totalS < 0.0001f) return KSColor(0f, 0f, 0f, 1f)

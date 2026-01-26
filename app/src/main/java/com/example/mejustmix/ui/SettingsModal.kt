@@ -519,69 +519,86 @@ fun SettingsModal(
                                 modifier = Modifier.padding(horizontal = 4.dp),
                                 verticalArrangement = Arrangement.spacedBy(12.dp)
                             ) {
-                                Text(
-                                    "Status: ${uiState.spectralConnectionStatus}",
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    fontWeight = FontWeight.Bold
-                                )
-                                
-                                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                    Button(
-                                        onClick = {
-                                            // Request permissions first
-                                            permissionLauncher.launch(
-                                                arrayOf(
-                                                    android.Manifest.permission.BLUETOOTH_SCAN,
-                                                    android.Manifest.permission.BLUETOOTH_CONNECT,
-                                                    android.Manifest.permission.ACCESS_FINE_LOCATION
-                                                )
+                                    Text(
+                                        "Status: ${uiState.spectralConnectionStatus}",
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        fontWeight = FontWeight.Bold
+                                    )
+
+                                    // Sensor Type Selector
+                                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                        Text("Sensor Model", style = MaterialTheme.typography.labelMedium)
+                                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                            FilterChip(
+                                                selected = uiState.spectralSensorType == "AS7341",
+                                                onClick = { settingsViewModel.setSpectralSensorType("AS7341") },
+                                                label = { Text("AS7341 (10-ch)") }
                                             )
-                                        },
-                                        modifier = Modifier.weight(1f)
-                                    ) {
-                                        Text("Connect")
+                                            FilterChip(
+                                                selected = uiState.spectralSensorType == "AS7265x",
+                                                onClick = { settingsViewModel.setSpectralSensorType("AS7265x") },
+                                                label = { Text("AS7265x (18-ch)") }
+                                            )
+                                        }
                                     }
                                     
-                                    OutlinedButton(
-                                        onClick = { settingsViewModel.disconnectSpectralSensor() },
-                                        modifier = Modifier.weight(1f)
-                                    ) {
-                                        Text("Disconnect")
+                                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                        Button(
+                                            onClick = {
+                                                // Request permissions first
+                                                permissionLauncher.launch(
+                                                    arrayOf(
+                                                        android.Manifest.permission.BLUETOOTH_SCAN,
+                                                        android.Manifest.permission.BLUETOOTH_CONNECT,
+                                                        android.Manifest.permission.ACCESS_FINE_LOCATION
+                                                    )
+                                                )
+                                            },
+                                            modifier = Modifier.weight(1f)
+                                        ) {
+                                            Text("Connect")
+                                        }
+                                        
+                                        OutlinedButton(
+                                            onClick = { settingsViewModel.disconnectSpectralSensor() },
+                                            modifier = Modifier.weight(1f)
+                                        ) {
+                                            Text("Disconnect")
+                                        }
                                     }
-                                }
-                                
-                                Button(
-                                    onClick = { settingsViewModel.triggerSpectralScan() },
-                                    modifier = Modifier.fillMaxWidth(),
-                                    enabled = uiState.spectralConnectionStatus == "Ready" || uiState.spectralConnectionStatus.startsWith("Data")
-                                ) {
-                                    Icon(Icons.Outlined.PlayArrow, null)
-                                    Spacer(Modifier.width(8.dp))
-                                    Text("Trigger Reading")
-                                }
-                                
-                                uiState.spectralData?.let { data ->
-                                    Card(
-                                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
+                                    
+                                    Button(
+                                        onClick = { settingsViewModel.triggerSpectralScan() },
+                                        modifier = Modifier.fillMaxWidth(),
+                                        enabled = uiState.spectralConnectionStatus == "Ready" || uiState.spectralConnectionStatus.startsWith("Data")
                                     ) {
-                                        Column(modifier = Modifier.padding(12.dp)) {
-                                            Text("Sensor Data (18 Channels)", fontWeight = FontWeight.Bold)
-                                            Spacer(Modifier.height(8.dp))
-                                            // Simple visualization of the list
-                                            Text(
-                                                data.chunked(6).joinToString("\n") { chunk ->
-                                                    chunk.joinToString(", ") { "%.0f".format(it) }
-                                                },
-                                                style = MaterialTheme.typography.bodySmall,
-                                                fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace
-                                            )
+                                        Icon(Icons.Outlined.PlayArrow, null)
+                                        Spacer(Modifier.width(8.dp))
+                                        Text("Trigger Reading")
+                                    }
+                                    
+                                    uiState.spectralData?.let { data ->
+                                        Card(
+                                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
+                                        ) {
+                                            Column(modifier = Modifier.padding(12.dp)) {
+                                                Text("Sensor Data (${data.size} Channels / ${uiState.spectralSensorType})", fontWeight = FontWeight.Bold)
+                                                Spacer(Modifier.height(8.dp))
+                                                // Simple visualization of the list
+                                                Text(
+                                                    data.chunked(6).joinToString("\n") { chunk ->
+                                                        chunk.joinToString(", ") { "%.0f".format(it) }
+                                                    },
+                                                    style = MaterialTheme.typography.bodySmall,
+                                                    fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace
+                                                )
+                                            }
                                         }
                                     }
                                 }
                             }
                         }
                     }
-                }
 
                 // 2. DISPENSING SETTINGS
                 item {
@@ -1333,6 +1350,7 @@ fun SettingsModal(
     }
     
     if (showTuningDialogForPumpIndex != null) {
+
         val index = showTuningDialogForPumpIndex!!
         val pump = uiState.pumps.getOrNull(index)
         if (pump != null) {

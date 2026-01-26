@@ -11,13 +11,24 @@ object SpectralMath {
      * Converts raw 18-channel spectral data into a K/S Color.
      * Use this when you want to use the physics engine to mix this color.
      */
-    fun calculateKSFromSpectral(sample: List<Float>, whiteRef: List<Float>): KSColor? {
+    /**
+     * Converts raw 18-channel spectral data into a K/S Color.
+     * Use this when you want to use the physics engine to mix this color.
+     */
+    fun calculateKSFromSpectral(sample: List<Float>, whiteRef: List<Float>, darkRef: List<Float>? = null): KSColor? {
         if (sample.size != 18 && sample.size != 10) return null
         if (whiteRef.size != sample.size) return null
+        if (darkRef != null && darkRef.size != sample.size) return null
         
-        // 1. Calculate Reflectance R = Sample / White
-        val reflectance = sample.zip(whiteRef) { s, w -> 
-            if (w == 0f) 0.01f else (s / w).coerceIn(0.01f, 0.99f) 
+        // 1. Calculate Reflectance R = (Sample - Dark) / (White - Dark)
+        val reflectance = sample.mapIndexed { i, s ->
+            val w = whiteRef[i]
+            val d = darkRef?.get(i) ?: 0f
+            
+            val numerator = (s - d).coerceAtLeast(0f)
+            val denominator = (w - d).coerceAtLeast(1f) // Avoid div by zero
+            
+            if (denominator == 0f) 0.01f else (numerator / denominator).coerceIn(0.01f, 0.99f)
         }
         
         // 2. Calculate K/S = (1-R)^2 / 2R
@@ -58,8 +69,8 @@ object SpectralMath {
      * Converts raw 18-channel spectral data directly to an RGB Int.
      * Use this when you just want to Show the color on screen.
      */
-    fun calculateRGBFromSpectral(sample: List<Float>, whiteRef: List<Float>): Int {
-        val ksColor = calculateKSFromSpectral(sample, whiteRef) ?: return Color.GRAY
+    fun calculateRGBFromSpectral(sample: List<Float>, whiteRef: List<Float>, darkRef: List<Float>? = null): Int {
+        val ksColor = calculateKSFromSpectral(sample, whiteRef, darkRef) ?: return Color.GRAY
         
         // Convert K/S back to Reflectance, then to sRGB (Gamma Corrected)
         val rLinear = ColorPhysicsEngine.ksToReflectance(ksColor.ksR)

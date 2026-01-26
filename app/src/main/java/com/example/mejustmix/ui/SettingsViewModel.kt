@@ -104,9 +104,11 @@ data class SettingsUiState(
     
     // Spectral Sensor State
     val spectralSensorEnabled: Boolean = false,
+    val spectralSensorType: String = "AS7341", // Options: "AS7265x", "AS7341"
     val spectralConnectionStatus: String = "Disconnected",
     val spectralData: List<Float>? = null,
     val whiteReference: List<Float>? = null,
+    val darkReference: List<Float>? = null,
     
     // First-time setup
     val hasSeenCalibrationWarning: Boolean = false,
@@ -267,6 +269,30 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
     fun toggleSpectralSensor(enabled: Boolean) {
         _uiState.update { it.copy(spectralSensorEnabled = enabled) }
         saveSettings()
+    }
+    
+    fun setSpectralSensorType(type: String) {
+        _uiState.update { it.copy(spectralSensorType = type) }
+        spectralManager.setSensorType(type)
+        saveSettings()
+    }
+    
+    fun setWhiteReference(ref: List<Float>) {
+        _uiState.update { it.copy(whiteReference = ref) }
+        saveSettings()
+    }
+    
+    fun setDarkReference(ref: List<Float>) {
+        _uiState.update { it.copy(darkReference = ref) }
+        saveSettings()
+    }
+    
+    fun triggerSpectralScan() {
+        spectralManager.triggerScan()
+    }
+    
+    fun disconnectSpectralSensor() {
+        spectralManager.disconnect()
     }
     
     fun markCalibrationWarningSeen() {
@@ -870,19 +896,6 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
     
     fun connectSpectralSensor() {
         spectralManager.connect()
-    }
-    
-    fun disconnectSpectralSensor() {
-        spectralManager.disconnect()
-    }
-    
-    fun triggerSpectralScan() {
-        spectralManager.triggerScan()
-    }
-    
-    fun setWhiteReference(data: List<Float>) {
-        _uiState.update { it.copy(whiteReference = data) }
-        saveSettings()
     }
     
     fun exportSpectralData() {

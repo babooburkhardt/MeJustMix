@@ -34,6 +34,7 @@ fun CalibrationWizardDialog(
     var currentStep by remember { mutableStateOf(0) }
     
     // Calibration Data
+    var darkReference by remember { mutableStateOf<List<Float>?>(null) }
     var whiteReference by remember { mutableStateOf<List<Float>?>(null) }
     var pigmentSpectrum by remember { mutableStateOf<List<Float>?>(null) }
     var calculatedKS by remember { mutableStateOf<KSColor?>(null) }
@@ -44,19 +45,24 @@ fun CalibrationWizardDialog(
         val data = uiState.spectralData
         if (data != null) {
             when (currentStep) {
-                1 -> { // Measuring White
-                    if (whiteReference == null) { // Only capture once per button press logic ideally, but here we capture latest
+                1 -> { // Measuring Dark
+                    if (darkReference == null) {
+                        darkReference = data
+                        settingsViewModel.setDarkReference(data)
+                    }
+                }
+                2 -> { // Measuring White
+                    if (whiteReference == null) { 
                         whiteReference = data
-                        // Auto save white ref to global settings too as a convenience
                         settingsViewModel.setWhiteReference(data)
                     }
                 }
-                2 -> { // Measuring Pigment
+                3 -> { // Measuring Pigment
                     if (pigmentSpectrum == null) {
                          pigmentSpectrum = data
                          // Auto calculate
                          whiteReference?.let { white ->
-                             val ks = SpectralMath.calculateKSFromSpectral(data, white)
+                             val ks = SpectralMath.calculateKSFromSpectral(data, white, darkReference)
                              if (ks != null) {
                                  calculatedKS = ks
                                  errorMessage = null
@@ -98,9 +104,9 @@ fun CalibrationWizardDialog(
                     )
                 }
 
-                // Progress Bar
+                // Progress Bar (Steps 0 to 4 -> 5 steps total)
                 LinearProgressIndicator(
-                    progress = { (currentStep + 1) / 4f },
+                    progress = { (currentStep + 1) / 5f },
                     modifier = Modifier.fillMaxWidth().padding(vertical = 16.dp),
                 )
 
@@ -116,24 +122,32 @@ fun CalibrationWizardDialog(
                         ) {
                             when (step) {
                                 0 -> StepIntro(pigmentName)
-                                1 -> StepMeasureWhite(
+                                1 -> StepMeasureDark(
                                     isConnected = uiState.spectralConnectionStatus.startsWith("Ready") || uiState.spectralConnectionStatus.startsWith("Data"),
                                     onScan = { 
-                                        whiteReference = null // Reset for new read
+                                        darkReference = null 
+                                        settingsViewModel.triggerSpectralScan() 
+                                    },
+                                    capturedData = darkReference
+                                )
+                                2 -> StepMeasureWhite(
+                                    isConnected = uiState.spectralConnectionStatus.startsWith("Ready") || uiState.spectralConnectionStatus.startsWith("Data"),
+                                    onScan = { 
+                                        whiteReference = null 
                                         settingsViewModel.triggerSpectralScan() 
                                     },
                                     capturedData = whiteReference
                                 )
-                                2 -> StepMeasurePigment(
+                                3 -> StepMeasurePigment(
                                     pigmentName = pigmentName,
                                     isConnected = uiState.spectralConnectionStatus.startsWith("Ready") || uiState.spectralConnectionStatus.startsWith("Data"),
                                     onScan = { 
-                                        pigmentSpectrum = null // Reset
+                                        pigmentSpectrum = null 
                                         settingsViewModel.triggerSpectralScan() 
                                     },
                                     capturedData = pigmentSpectrum
                                 )
-                                3 -> StepResults(
+                                4 -> StepResults(
                                     pigmentName = pigmentName,
                                     ksColor = calculatedKS,
                                     error = errorMessage
@@ -161,7 +175,7 @@ fun CalibrationWizardDialog(
 
                     Button(
                         onClick = {
-                            if (currentStep < 3) {
+                            if (currentStep < 4) {
                                 currentStep++
                             } else {
                                 // Finish
@@ -170,16 +184,17 @@ fun CalibrationWizardDialog(
                             }
                         },
                         enabled = when (currentStep) {
-                            1 -> whiteReference != null
-                            2 -> pigmentSpectrum != null
-                            3 -> calculatedKS != null
+                            1 -> darkReference != null
+                            2 -> whiteReference != null
+                            3 -> pigmentSpectrum != null
+                            4 -> calculatedKS != null
                             else -> true
                         }
                     ) {
-                        Text(if (currentStep == 3) "Save & Close" else "Next")
+                        Text(if (currentStep == 4) "Save & Close" else "Next")
                         Spacer(Modifier.width(8.dp))
                          @Suppress("DEPRECATION")
-                        Icon(if (currentStep == 3) Icons.Default.Check else Icons.Default.ArrowForward, null)
+                        Icon(if (currentStep == 4) Icons.Default.Check else Icons.Default.ArrowForward, null)
                     }
                 }
             }
@@ -193,15 +208,40 @@ fun StepIntro(pigmentName: String) {
         Icon(Icons.Default.Science, null, modifier = Modifier.size(64.dp), tint = MaterialTheme.colorScheme.primary)
         Text("Welcome to Guided Calibration", style = MaterialTheme.typography.headlineSmall)
         Text(
-            "This wizard will help you create an accurate Kubelka-Munk profile for $pigmentName.",
+            "This wizard will help you create an accurate Kubelka-Munk profile for $pigmentName, correcting for sensor noise.",
             textAlign = TextAlign.Center
         )
         Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)) {
             Column(Modifier.padding(16.dp)) {
                 Text("You will need:", fontWeight = FontWeight.Bold)
                 Text("• The Spectral Sensor (Connected)")
-                Text("• A White Calibration Standard (Tile)")
+                Text("• A Black Object or Lens Cap (Dark Reference)")
+                Text("• A White Calibration Standard (White Reference)")
                 Text("• A dry, opaque sample of Pure $pigmentName")
+            }
+        }
+    }
+}
+
+@Composable
+fun StepMeasureDark(isConnected: Boolean, onScan: () -> Unit, capturedData: List<Float>?) {
+    Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(16.dp)) {
+        Text("Step 1: Dark Reference", style = MaterialTheme.typography.headlineSmall)
+        Text(
+            "Cover the sensor completely to block all light (Dark Correction).",
+            textAlign = TextAlign.Center,
+            style = MaterialTheme.typography.bodyLarge
+        )
+        
+        if (capturedData != null) {
+            Icon(Icons.Default.Check, null, tint = Color.Green, modifier = Modifier.size(48.dp))
+            Text("Dark Reference Captured!", fontWeight = FontWeight.Bold)
+        } else {
+            Button(onClick = onScan, enabled = isConnected, modifier = Modifier.size(140.dp), shape = MaterialTheme.shapes.extraLarge, colors = ButtonDefaults.buttonColors(containerColor = Color.Black)) {
+                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                     Icon(Icons.Default.Science, null, tint = Color.White)
+                     Text(if (isConnected) "SCAN\nDARK" else "Connect\nSensor", color = Color.White)
+                 }
             }
         }
     }
@@ -210,10 +250,11 @@ fun StepIntro(pigmentName: String) {
 @Composable
 fun StepMeasureWhite(isConnected: Boolean, onScan: () -> Unit, capturedData: List<Float>?) {
     Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(16.dp)) {
-        Text("Step 1: White Reference", style = MaterialTheme.typography.headlineSmall)
+        Text("Step 2: White Reference", style = MaterialTheme.typography.headlineSmall)
         Text(
             "Place the sensor flat on the White Calibration Tile.",
-            textAlign = TextAlign.Center
+            textAlign = TextAlign.Center,
+            style = MaterialTheme.typography.bodyLarge
         )
         
         if (capturedData != null) {
@@ -233,7 +274,7 @@ fun StepMeasureWhite(isConnected: Boolean, onScan: () -> Unit, capturedData: Lis
 @Composable
 fun StepMeasurePigment(pigmentName: String, isConnected: Boolean, onScan: () -> Unit, capturedData: List<Float>?) {
     Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(16.dp)) {
-        Text("Step 2: Measure Pigment", style = MaterialTheme.typography.headlineSmall)
+        Text("Step 3: Measure Pigment", style = MaterialTheme.typography.headlineSmall)
         Text(
             "Place the sensor flat on the Pure $pigmentName sample.",
             textAlign = TextAlign.Center
@@ -256,7 +297,7 @@ fun StepMeasurePigment(pigmentName: String, isConnected: Boolean, onScan: () -> 
 @Composable
 fun StepResults(pigmentName: String, ksColor: KSColor?, error: String?) {
     Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(16.dp)) {
-        Text("Step 3: Results", style = MaterialTheme.typography.headlineSmall)
+        Text("Step 4: Results", style = MaterialTheme.typography.headlineSmall)
         
         if (error != null) {
             Text(error, color = MaterialTheme.colorScheme.error)
