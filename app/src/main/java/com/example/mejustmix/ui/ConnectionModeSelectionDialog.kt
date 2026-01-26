@@ -193,20 +193,20 @@ fun BLEPermissionExplanationDialog(
 ) {
     val isAndroid12OrLater = android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S
     
-    val title = if (isAndroid12OrLater) "Nearby Devices Permission" else "Location Permission Required"
+    val title = if (isAndroid12OrLater) "Allow Nearby Devices?" else "Location Permission Required"
     val mainText = if (isAndroid12OrLater) 
-        "To connect to the mixer via Bluetooth, Android requires the 'Nearby Devices' permission."
+        "To connect to your mixer, the app needs permission to scan for nearby devices."
     else
         "To use Bluetooth, Android requires location permission."
         
-    val reasonTitle = if (isAndroid12OrLater) "Why?" else "Why Location?"
+    val reasonTitle = if (isAndroid12OrLater) "Why is this needed?" else "Why Location?"
     val reasonText = if (isAndroid12OrLater)
-        "This allows the app to find and connect to your MeJustMix device without knowing your physical location."
+        "This allows the app to find and talk to your MeJustMix machine without tracking your location."
     else
         "Bluetooth can be used to determine your location. Android requires this permission to protect your privacy, even though this app doesn't use location data."
 
     val privacyText = if (isAndroid12OrLater)
-        "We only use this to talk to your mixer. No location data is accessed."
+        "Your location is never accessed or stored. We only use this to connect to the machine."
     else
         "This app does not track or store your location. The permission is only used to scan for Bluetooth devices."
 
