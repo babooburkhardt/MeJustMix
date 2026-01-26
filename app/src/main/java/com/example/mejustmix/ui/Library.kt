@@ -65,6 +65,8 @@ import androidx.compose.ui.zIndex
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.window.Dialog
 import coil.compose.AsyncImage
+import com.example.mejustmix.ui.components.ModernPillTab
+import com.example.mejustmix.ui.components.ModernPillTabRow
 // EXPLICIT IMPORTS
 import com.example.mejustmix.data.ColorFolder
 import com.example.mejustmix.data.SavedColor
@@ -137,65 +139,17 @@ fun Library(mixViewModel: MixViewModel) {
                 modifier = Modifier.padding(start = 8.dp, bottom = 8.dp)
             )
             // Pill-shaped Library Tabs
-            Surface(
-                shape = RoundedCornerShape(24.dp),
-                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(bottom = 8.dp)
+            ModernPillTabRow(
+                selectedTabIndex = selectedTab,
+                modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp)
             ) {
-                TabRow(
-                    selectedTabIndex = selectedTab,
-                    containerColor = Color.Transparent,
-                    divider = {},
-                    indicator = { tabPositions ->
-                        if (selectedTab < tabPositions.size) {
-                            Box(
-                                Modifier
-                                    .tabIndicatorOffset(tabPositions[selectedTab])
-                                    .fillMaxHeight()
-                                    .padding(4.dp)
-                                    .background(
-                                        color = MaterialTheme.colorScheme.primary,
-                                        shape = RoundedCornerShape(20.dp)
-                                    )
-                            )
-                        }
-                    },
-                    modifier = Modifier.height(48.dp)
-                ) {
-                    tabs.forEachIndexed { index, title ->
-                        val selected = selectedTab == index
-                        val iconColor = if (selected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant
-                        
-                        Tab(
-                            selected = selected,
-                            onClick = { selectedTab = index },
-                            modifier = Modifier
-                                .clip(RoundedCornerShape(20.dp))
-                                .zIndex(2f),
-                            text = {
-                                Row(
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.Center
-                                ) {
-                                    Icon(
-                                        imageVector = if (index == 0) Icons.Outlined.Palette else Icons.Outlined.PhotoLibrary,
-                                        contentDescription = null,
-                                        modifier = Modifier.size(18.dp),
-                                        tint = iconColor
-                                    )
-                                    Spacer(modifier = Modifier.width(6.dp))
-                                    Text(
-                                        text = title,
-                                        style = MaterialTheme.typography.labelMedium,
-                                        fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal,
-                                        color = iconColor
-                                    )
-                                }
-                            }
-                        )
-                    }
+                tabs.forEachIndexed { index, title ->
+                    ModernPillTab(
+                        selected = selectedTab == index,
+                        onClick = { selectedTab = index },
+                        text = title,
+                        icon = if (index == 0) Icons.Outlined.Palette else Icons.Outlined.PhotoLibrary
+                    )
                 }
             }
             

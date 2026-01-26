@@ -91,7 +91,7 @@ fun SimpleKMCalibrationDialog(
     ) {
         Surface(
             modifier = Modifier.fillMaxSize(),
-            shape = RoundedCornerShape(16.dp),
+            shape = RoundedCornerShape(28.dp),
             tonalElevation = 6.dp
         ) {
             Column(

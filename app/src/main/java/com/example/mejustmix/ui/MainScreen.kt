@@ -22,6 +22,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.draw.blur
+import androidx.compose.animation.core.animateDpAsState
 import android.Manifest
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -254,7 +256,18 @@ fun MainScreen() {
         }
     }
 
+    // --- BLUR LOGIC ---
+    val isAnyDialogOpen = showHistory || showSettingsDialog || 
+                        showSinglePumpDialogIndex != null || showConnectionModeDialog || 
+                        showBLEPermissionDialog || showCalibrationWarning || isSending
+    
+    val blurRadius by animateDpAsState(
+        targetValue = if (isAnyDialogOpen) 6.dp else 0.dp,
+        label = "BackgroundBlur"
+    )
+
     Scaffold(
+        modifier = Modifier.blur(blurRadius),
         snackbarHost = {
             SnackbarHost(hostState = snackbarHostState) { data ->
                 Snackbar(

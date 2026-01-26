@@ -37,6 +37,7 @@ import androidx.compose.material3.TabRowDefaults
 import androidx.compose.material3.TabRowDefaults.tabIndicatorOffset
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.ui.window.DialogProperties
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -52,7 +53,10 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.zIndex
+import com.example.mejustmix.ui.components.ModernPillTab
+import com.example.mejustmix.ui.components.ModernPillTabRow
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -387,9 +391,13 @@ fun SettingsModal(
     // --- MAIN SETTINGS UI ---
     AlertDialog(
         onDismissRequest = onDismissRequest,
+        properties = DialogProperties(
+            usePlatformDefaultWidth = false,
+            decorFitsSystemWindows = true
+        ),
         modifier = Modifier
-            .widthIn(max = 850.dp) // Wider for tablet text layout
-            .fillMaxWidth(0.98f), // Maximize space on phones
+            .widthIn(max = 560.dp) // Standard dialog width
+            .fillMaxWidth(0.9f), // Nice margins on phones
         title = {
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -402,56 +410,18 @@ fun SettingsModal(
         text = {
             Column(modifier = Modifier.fillMaxWidth()) {
                 // Pill-shaped TabRow
-                Surface(
-                    shape = RoundedCornerShape(24.dp),
-                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                ModernPillTabRow(
+                    selectedTabIndex = selectedTabIndex,
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(bottom = 16.dp)
                 ) {
-                    TabRow(
-                        selectedTabIndex = selectedTabIndex,
-                        containerColor = Color.Transparent, // Let Surface handle background
-                        divider = {}, // Remove default line
-                        indicator = { tabPositions ->
-                            // Custom sliding pill indicator
-                            if (selectedTabIndex < tabPositions.size) {
-                                Box(
-                                    Modifier
-                                        .tabIndicatorOffset(tabPositions[selectedTabIndex])
-                                        .fillMaxHeight()
-                                        .padding(4.dp)
-                                        .background(
-                                            color = MaterialTheme.colorScheme.primary,
-                                            shape = RoundedCornerShape(20.dp)
-                                        )
-                                )
-                            }
-                        },
-                        modifier = Modifier.height(48.dp)
-                    ) {
-                        tabs.forEachIndexed { index, title ->
-                            val selected = selectedTabIndex == index
-                            Tab(
-                                selected = selected,
-                                onClick = { selectedTabIndex = index },
-                                modifier = Modifier
-                                    .clip(RoundedCornerShape(20.dp))
-                                    .zIndex(2f), // Ensure text is above indicator
-                                text = {
-                                    Text(
-                                        text = title,
-                                        style = MaterialTheme.typography.labelLarge,
-                                        fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal,
-                                        color = if (selected) {
-                                            MaterialTheme.colorScheme.onPrimary
-                                        } else {
-                                            MaterialTheme.colorScheme.onSurfaceVariant
-                                        }
-                                    )
-                                }
-                            )
-                        }
+                    tabs.forEachIndexed { index, title ->
+                        ModernPillTab(
+                            selected = selectedTabIndex == index,
+                            onClick = { selectedTabIndex = index },
+                            text = title
+                        )
                     }
                 }
                 

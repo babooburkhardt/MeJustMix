@@ -1,6 +1,15 @@
 package com.example.mejustmix.ui
 
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.animation.togetherWith
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Info
@@ -8,6 +17,8 @@ import androidx.compose.material3.*
 import androidx.compose.material3.TabRowDefaults.tabIndicatorOffset
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
+import com.example.mejustmix.ui.components.ModernPillTab
+import com.example.mejustmix.ui.components.ModernPillTabRow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -75,19 +86,20 @@ fun FlowCalibratorDialog(
         onDismissRequest = onDismissRequest,
         properties = DialogProperties(usePlatformDefaultWidth = false)
     ) {
-        val configuration = LocalConfiguration.current
-        val isTablet = configuration.smallestScreenWidthDp >= 600
-        val cardModifier = if (isTablet) {
-            Modifier.width(500.dp)
-        } else {
-            Modifier.fillMaxWidth(0.95f)
-        }
-
-        Card(
-            modifier = cardModifier.padding(16.dp),
-            shape = MaterialTheme.shapes.extraLarge,
-            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+        Box(
+            modifier = Modifier.fillMaxSize(),
+            contentAlignment = Alignment.Center
         ) {
+            val cardModifier = Modifier
+                .widthIn(max = 560.dp)
+                .fillMaxWidth(0.9f)
+
+            Card(
+                modifier = cardModifier.padding(16.dp),
+                shape = RoundedCornerShape(28.dp),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                elevation = CardDefaults.cardElevation(defaultElevation = 8.dp)
+            ) {
             Column(
                 modifier = Modifier.padding(24.dp),
                 horizontalAlignment = Alignment.CenterHorizontally
@@ -118,32 +130,19 @@ fun FlowCalibratorDialog(
 
                 // 1. Pump Tabs (Hidden if locked)
                 if (!lockedToPump) {
-                    ScrollableTabRow(
+                    ModernPillTabRow(
                         selectedTabIndex = selectedPumpIndex,
-                        edgePadding = 0.dp,
-                        containerColor = Color.Transparent,
-                        contentColor = pumpColor,
-                        indicator = { tabPositions ->
-                            TabRowDefaults.SecondaryIndicator(
-                                Modifier.tabIndicatorOffset(tabPositions[selectedPumpIndex]),
-                                color = pumpColor
-                            )
-                        }
+                        modifier = Modifier.fillMaxWidth()
                     ) {
                         uiState.pumps.forEachIndexed { index, pump ->
-                            Tab(
+                            ModernPillTab(
                                 selected = selectedPumpIndex == index,
                                 onClick = {
                                     selectedPumpIndex = index
                                     actualAmountStr = ""
                                 },
-                                text = {
-                                    Text(
-                                        pump.name,
-                                        color = if (selectedPumpIndex == index) Color(pump.colorArgb) else MaterialTheme.colorScheme.onSurface,
-                                        fontWeight = if (selectedPumpIndex == index) FontWeight.Bold else FontWeight.Normal
-                                    )
-                                }
+                                text = pump.name,
+                                unselectedContentColor = MaterialTheme.colorScheme.onSurfaceVariant
                             )
                         }
                     }
@@ -153,52 +152,74 @@ fun FlowCalibratorDialog(
                     HorizontalDivider(modifier = Modifier.padding(bottom = 24.dp))
                 }
 
-                // 2. Step 1: Dispense
-                Text("Step 1: Dispense", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.primary)
-                Text("Place a cup under the ${currentPump.name} nozzle.", style = MaterialTheme.typography.bodySmall, color = Color.Gray)
+                // Wrap content in AnimatedContent for horizontal slide
+                AnimatedContent(
+                    targetState = selectedPumpIndex,
+                    transitionSpec = {
+                        val duration = 300
+                        if (targetState > initialState) {
+                            (slideInHorizontally(animationSpec = tween(duration)) { it } + fadeIn(animationSpec = tween(duration)))
+                                .togetherWith(slideOutHorizontally(animationSpec = tween(duration)) { -it } + fadeOut(animationSpec = tween(duration)))
+                        } else {
+                            (slideInHorizontally(animationSpec = tween(duration)) { -it } + fadeIn(animationSpec = tween(duration)))
+                                .togetherWith(slideOutHorizontally(animationSpec = tween(duration)) { it } + fadeOut(animationSpec = tween(duration)))
+                        }
+                    },
+                    label = "FlowCalibratorTransition"
+                ) { targetIndex ->
+                    val pump = uiState.pumps.getOrNull(targetIndex)
+                    if (pump != null) {
+                        val pumpColor = Color(pump.colorArgb)
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            // 2. Step 1: Dispense
+                            Text("Step 1: Dispense", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.primary)
+                            Text("Place a cup under the ${pump.name} nozzle.", style = MaterialTheme.typography.bodySmall, color = Color.Gray)
 
-                Spacer(modifier = Modifier.height(8.dp))
+                            Spacer(modifier = Modifier.height(8.dp))
 
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    OutlinedTextField(
-                        value = testAmountStr,
-                        onValueChange = { testAmountStr = it },
-                        label = { Text("Target (ml)") },
-                        modifier = Modifier.weight(1f),
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
-                    )
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Button(
-                        onClick = {
-                            val amount = testAmountStr.toFloatOrNull() ?: 0f
-                            if (amount > 0) {
-                                mixViewModel.primePump(currentPump.axis, amount)
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                OutlinedTextField(
+                                    value = testAmountStr,
+                                    onValueChange = { testAmountStr = it },
+                                    label = { Text("Target (ml)") },
+                                    modifier = Modifier.weight(1f),
+                                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
+                                )
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Button(
+                                    onClick = {
+                                        val amount = testAmountStr.toFloatOrNull() ?: 0f
+                                        if (amount > 0) {
+                                            mixViewModel.primePump(pump.axis, amount)
+                                        }
+                                    },
+                                    modifier = Modifier.height(56.dp),
+                                    shape = MaterialTheme.shapes.small,
+                                    colors = ButtonDefaults.buttonColors(containerColor = pumpColor)
+                                ) {
+                                    val textColor = if (pumpColor.getBrightness() > 0.5f) Color.Black else Color.White
+                                    Text("DISPENSE", color = textColor)
+                                }
                             }
-                        },
-                        modifier = Modifier.height(56.dp),
-                        shape = MaterialTheme.shapes.small,
-                        colors = ButtonDefaults.buttonColors(containerColor = pumpColor)
-                    ) {
-                        val textColor = if (pumpColor.getBrightness() > 0.5f) Color.Black else Color.White
-                        Text("DISPENSE", color = textColor)
+
+                            HorizontalDivider(modifier = Modifier.padding(vertical = 24.dp))
+
+                            // 3. Step 2: Measure
+                            Text("Step 2: Measure", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.primary)
+                            Text("Enter the exact volume collected.", style = MaterialTheme.typography.bodySmall, color = Color.Gray)
+
+                            Spacer(modifier = Modifier.height(8.dp))
+
+                            OutlinedTextField(
+                                value = actualAmountStr,
+                                onValueChange = { actualAmountStr = it },
+                                label = { Text("Actual Amount (ml)") },
+                                modifier = Modifier.fillMaxWidth(),
+                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
+                            )
+                        }
                     }
                 }
-
-                HorizontalDivider(modifier = Modifier.padding(vertical = 24.dp))
-
-                // 3. Step 2: Measure
-                Text("Step 2: Measure", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.primary)
-                Text("Enter the exact volume collected.", style = MaterialTheme.typography.bodySmall, color = Color.Gray)
-
-                Spacer(modifier = Modifier.height(8.dp))
-
-                OutlinedTextField(
-                    value = actualAmountStr,
-                    onValueChange = { actualAmountStr = it },
-                    label = { Text("Actual Amount (ml)") },
-                    modifier = Modifier.fillMaxWidth(),
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
-                )
 
                 // 4. Results Preview
                 if (newCalibration != null) {
@@ -243,4 +264,5 @@ fun FlowCalibratorDialog(
             }
         }
     }
+}
 }

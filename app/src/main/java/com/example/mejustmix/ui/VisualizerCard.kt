@@ -28,6 +28,8 @@ import androidx.compose.material3.TabRowDefaults.tabIndicatorOffset
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.listSaver
 import androidx.compose.runtime.saveable.rememberSaveable
+import com.example.mejustmix.ui.components.ModernPillTab
+import com.example.mejustmix.ui.components.ModernPillTabRow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -135,34 +137,14 @@ fun VisualizerCard(
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
             // Pill-shaped TabRow for Wheel/Photo/Camera/Sensor
-            Surface(
-                shape = RoundedCornerShape(24.dp),
-                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+            ModernPillTabRow(
+                selectedTabIndex = selectedTab,
                 modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp)
             ) {
-                TabRow(
-                    selectedTabIndex = selectedTab,
-                    containerColor = Color.Transparent,
-                    divider = {},
-                    indicator = { tabPositions ->
-                        if (selectedTab < tabPositions.size) {
-                            Box(
-                                Modifier
-                                    .tabIndicatorOffset(tabPositions[selectedTab])
-                                    .fillMaxHeight()
-                                    .padding(4.dp)
-                                    .background(
-                                        color = MaterialTheme.colorScheme.primary,
-                                        shape = RoundedCornerShape(20.dp)
-                                    )
-                            )
-                        }
-                    },
-                    modifier = Modifier.height(48.dp)
-                ) {
-                    tabs.forEachIndexed { index, title ->
+                tabs.forEachIndexed { index, title ->
+                    if (title == "Sensor") {
                         val selected = selectedTab == index
-                        val iconColor = if (selected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant
+                        val contentColor = if (selected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant
                         Tab(
                             selected = selected,
                             onClick = { selectedTab = index },
@@ -172,20 +154,27 @@ fun VisualizerCard(
                                     verticalAlignment = Alignment.CenterVertically,
                                     horizontalArrangement = Arrangement.Center
                                 ) {
-                                    when (title) {
-                                        "Wheel" -> Icon(Icons.Outlined.Palette, null, modifier = Modifier.size(18.dp), tint = iconColor)
-                                        "Photo" -> Icon(Icons.Outlined.Image, null, modifier = Modifier.size(18.dp), tint = iconColor)
-                                        "Camera" -> Icon(Icons.Filled.CameraAlt, null, modifier = Modifier.size(18.dp), tint = iconColor)
-                                        "Sensor" -> Text("🌈", fontSize = 14.sp)
-                                    }
+                                    Text("🌈", fontSize = 14.sp)
                                     Spacer(modifier = Modifier.width(6.dp))
                                     Text(
                                         text = title,
                                         style = MaterialTheme.typography.labelMedium,
                                         fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal,
-                                        color = iconColor
+                                        color = contentColor
                                     )
                                 }
+                            }
+                        )
+                    } else {
+                        ModernPillTab(
+                            selected = selectedTab == index,
+                            onClick = { selectedTab = index },
+                            text = title,
+                            icon = when (title) {
+                                "Wheel" -> Icons.Outlined.Palette
+                                "Photo" -> Icons.Outlined.Image
+                                "Camera" -> Icons.Filled.CameraAlt
+                                else -> null
                             }
                         )
                     }

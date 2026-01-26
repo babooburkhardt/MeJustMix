@@ -56,7 +56,7 @@ fun PulseTuningDialog(
                 .fillMaxWidth(0.95f)
                 .fillMaxHeight(0.9f) // Constrain height to 90% of screen
                 .padding(16.dp),
-            shape = RoundedCornerShape(16.dp),
+            shape = RoundedCornerShape(28.dp),
             colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
         ) {
             Column(
