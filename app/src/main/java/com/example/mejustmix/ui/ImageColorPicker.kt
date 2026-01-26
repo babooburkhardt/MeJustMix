@@ -31,6 +31,7 @@ import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.ZoomIn
 import androidx.compose.material.icons.filled.ZoomOut
 import androidx.compose.material.icons.outlined.Image
+import androidx.compose.material.icons.outlined.Save
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.listSaver
@@ -380,7 +381,7 @@ fun ImageCanvas(
         ) {
             if (onSaveImage != null && selectedImageUri != null) {
                 IconButton(onClick = { onSaveImage(selectedImageUri) }) {
-                    Icon(Icons.Default.Add, "Save to Library", tint = Color.White)
+                    Icon(Icons.Outlined.Save, "Save to Library", tint = Color.White)
                 }
             }
             
