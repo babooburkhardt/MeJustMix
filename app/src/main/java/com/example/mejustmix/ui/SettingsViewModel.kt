@@ -11,6 +11,7 @@ import com.example.mejustmix.data.MachineManager
 import com.example.mejustmix.services.PigmentStrengths
 import com.example.mejustmix.services.KSColor
 import com.example.mejustmix.services.KSPigmentDatabase
+import com.example.mejustmix.services.KSCalibrationBundle
 import com.example.mejustmix.services.KubelkaMunkColorMixing
 import com.example.mejustmix.services.UnifiedBLEScanner
 import com.example.mejustmix.data.PrinterRepository
@@ -23,6 +24,10 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.isActive
 import androidx.lifecycle.viewModelScope
+import androidx.core.content.edit
+import java.util.Locale
+import java.text.SimpleDateFormat
+import java.util.Date
 
 // Fully defined PumpConfig
 data class PumpConfig(
@@ -136,7 +141,7 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
     private val bleScanner = UnifiedBLEScanner(application)
     
     // Repository for printer communication
-    private val printerRepository = com.example.mejustmix.data.PrinterRepository.getInstance(application)
+    private val printerRepository = PrinterRepository.getInstance(application)
 
     private val prefs = application.getSharedPreferences("mejustmix_settings", Context.MODE_PRIVATE)
     private val gson = Gson()
@@ -150,15 +155,17 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
         }
         
         // Setup BLE device discovery callbacks
-        bleScanner.onFluidNCFound = { device ->
+        bleScanner.onFluidNCFound = { _ ->
             // Notify user of discovered FluidNC device
             // This will be handled in the UI layer
         }
         
-        bleScanner.onSpectralSensorFound = { device ->
+        bleScanner.onSpectralSensorFound = { _ ->
             // Auto-enable spectral sensor if found
             if (!uiState.value.spectralSensorEnabled) {
-                // Notify user to connect
+                showToast("Spectral Bridge discovered! Enabling and connecting...")
+                toggleSpectralSensor(true)
+                connectSpectralSensor()
             }
         }
         
@@ -201,7 +208,9 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
     private fun saveSettings() {
         try {
             val json = gson.toJson(_uiState.value)
-            prefs.edit().putString("settings_json", json).apply()
+            prefs.edit(commit = false) { 
+                putString("settings_json", json)
+            }
         } catch (e: Exception) {
             e.printStackTrace()
             showToast("Failed to save settings: ${e.message}")
@@ -502,7 +511,7 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
             
             // If significant movement needed (ignore tiny rounding errors)
             if (kotlin.math.abs(deltaSteps) > 0.5f) {
-                cmds.add("G1 ${pump.axis}${String.format(java.util.Locale.US, "%.2f", deltaSteps)} F${_uiState.value.maxFeedRate.toInt()}")
+                cmds.add("G1 ${pump.axis}${String.format(Locale.US, "%.2f", deltaSteps)} F${_uiState.value.maxFeedRate.toInt()}")
                 hasMovement = true
             }
             
@@ -808,9 +817,9 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
         // Show appropriate message
         val message = when {
             driftAnalysis.recommendedCompensation != null && driftDegrees != null ->
-                "${pump.name} position saved. Drift pattern detected: ${String.format("%.1f", driftAnalysis.averageDrift)}°/session auto-compensated!"
+                "${pump.name} position saved. Drift pattern detected: ${String.format(Locale.US, "%.1f", driftAnalysis.averageDrift)}°/session auto-compensated!"
             driftDegrees != null ->
-                "${pump.name} position saved. Drift: ${String.format("%.1f", driftDegrees)}° (${updatedDriftHistory.size}/5 samples for pattern detection)"
+                "${pump.name} position saved. Drift: ${String.format(Locale.US, "%.1f", driftDegrees)}° (${updatedDriftHistory.size}/5 samples for pattern detection)"
             else ->
                 "${pump.name} position saved at ${observedAngle.toInt()}°"
         }
@@ -863,7 +872,7 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
             state.copy(pumps = updatedPumps)
         }
         saveSettings()
-        showToast("${_uiState.value.pumps[pumpIndex].name} calibration saved: ${String.format("%.3f", mlPerPulse)} mL/pulse")
+        showToast("${_uiState.value.pumps[pumpIndex].name} calibration saved: ${String.format(Locale.US, "%.3f", mlPerPulse)} mL/pulse")
     }
     
     /**
@@ -919,7 +928,7 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
         
         viewModelScope.launch {
             try {
-                val timestamp = java.text.SimpleDateFormat("yyyyMMdd_HHmmss", java.util.Locale.US).format(java.util.Date())
+                val timestamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(Date())
                 val filename = "spectral_data_$timestamp.csv"
                 
                 // Create CSV content
@@ -989,6 +998,81 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
         }
     }
     
+    /**
+     * Export K/S values and pigment weights to a JSON file in the Downloads folder.
+     */
+    fun exportKSDatabase() {
+        val database = _uiState.value.kmDatabase ?: return
+        val strengths = _uiState.value.pigmentStrengths
+        val bundle = KSCalibrationBundle(database = database, strengths = strengths)
+
+        viewModelScope.launch {
+            try {
+                val timestamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(Date())
+                val filename = "ks_calibration_$timestamp.json"
+                val json = gson.toJson(bundle)
+                
+                val downloadsDir = android.os.Environment.getExternalStoragePublicDirectory(android.os.Environment.DIRECTORY_DOWNLOADS)
+                val file = java.io.File(downloadsDir, filename)
+                file.writeText(json)
+                
+                showToast("KS calibration exported to Downloads/$filename")
+            } catch (e: Exception) {
+                e.printStackTrace()
+                showToast("Export failed: ${e.message}")
+            }
+        }
+    }
+
+    /**
+     * Import K/S values and pigment weights from a JSON file.
+     */
+    fun importKSDatabase(uri: android.net.Uri) {
+        viewModelScope.launch {
+            try {
+                val context = getApplication<Application>()
+                val inputStream = context.contentResolver.openInputStream(uri)
+                val jsonText = inputStream?.bufferedReader()?.use { it.readText() }
+                
+                if (jsonText == null) {
+                    showToast("Failed to read file")
+                    return@launch
+                }
+                
+                // Try to parse as bundle first, then fallback to just database
+                var importedDatabase: KSPigmentDatabase? = null
+                var importedStrengths: PigmentStrengths? = null
+                
+                try {
+                    val bundle = gson.fromJson(jsonText, KSCalibrationBundle::class.java)
+                    if (bundle != null && bundle.database != null) {
+                        importedDatabase = bundle.database
+                        importedStrengths = bundle.strengths
+                    }
+                } catch (e: Exception) {
+                    // Fallback to old format
+                    importedDatabase = gson.fromJson(jsonText, KSPigmentDatabase::class.java)
+                }
+
+                if (importedDatabase != null) {
+                    _uiState.update { state -> 
+                        state.copy(
+                            kmDatabase = importedDatabase,
+                            pigmentStrengths = importedStrengths ?: state.pigmentStrengths
+                        )
+                    }
+                    saveSettings()
+                    showToast("KS calibration imported successfully!")
+                } else {
+                    showToast("Invalid KS database format")
+                }
+            } catch (e: Exception) {
+                e.printStackTrace()
+                showToast("Import failed: ${e.message}")
+            }
+        }
+    }
+
     // --- BLE Device Discovery ---
     
     /**
@@ -1174,7 +1258,7 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
         }
         
         saveSettings()
-        showToast("${pump.name}: Rotation calibrated (${String.format("%.0f", stepsPerPulse)} steps/pulse)")
+        showToast("${pump.name}: Rotation calibrated (${String.format(Locale.US, "%.0f", stepsPerPulse)} steps/pulse)")
     }
 }
 

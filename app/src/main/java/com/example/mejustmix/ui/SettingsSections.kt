@@ -2,10 +2,7 @@ package com.example.mejustmix.ui
 
 import android.Manifest
 import android.content.Intent
-import android.net.Uri
 import androidx.activity.compose.ManagedActivityResultLauncher
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateFloatAsState
@@ -33,19 +30,20 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.example.mejustmix.data.ConnectionType
+import androidx.core.net.toUri
+import java.util.Locale
 
 /**
  * Expandable section header for settings
  */
 @Composable
 fun SettingsSectionHeader(
-    icon: String,
+    modifier: Modifier = Modifier,
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
     title: String,
     subtitle: String? = null,
     expanded: Boolean,
-    onClick: () -> Unit,
-    modifier: Modifier = Modifier
+    onClick: () -> Unit
 ) {
     Card(
         onClick = onClick,
@@ -60,7 +58,12 @@ fun SettingsSectionHeader(
                 .fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Text(icon, fontSize = 24.sp)
+            Icon(
+                imageVector = icon,
+                contentDescription = null,
+                modifier = Modifier.size(24.dp),
+                tint = if (expanded) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
+            )
             Spacer(modifier = Modifier.width(16.dp))
             Column(modifier = Modifier.weight(1f)) {
                 Text(
@@ -94,7 +97,7 @@ fun ConnectionSection(
 ) {
     Column {
         SettingsSectionHeader(
-            icon = "🔧",
+            icon = Icons.Default.Link,
             title = "Connection Settings",
             subtitle = "FluidNC IP and web control",
             expanded = expanded,
@@ -136,7 +139,7 @@ fun ConnectionSection(
                 val context = LocalContext.current
                 OutlinedButton(
                     onClick = {
-                        val intent = Intent(Intent.ACTION_VIEW, Uri.parse("http://${uiState.ipAddress}"))
+                        val intent = Intent(Intent.ACTION_VIEW, "http://${uiState.ipAddress}".toUri())
                         context.startActivity(intent)
                     },
                     modifier = Modifier.fillMaxWidth(),
@@ -163,7 +166,7 @@ fun DispensingSection(
 ) {
     Column {
         SettingsSectionHeader(
-            icon = "🎯",
+            icon = Icons.Default.Opacity,
             title = "Dispensing Settings",
             subtitle = "Flow rate and retraction",
             expanded = expanded,
@@ -224,7 +227,7 @@ fun PumpSection(
 ) {
     Column {
         SettingsSectionHeader(
-            icon = "💧",
+            icon = Icons.Default.WaterDrop,
             title = "Pump Configuration",
             subtitle = "${uiState.pumps.size} pumps configured",
             expanded = expanded,
@@ -287,7 +290,7 @@ fun PumpSection(
 
                             Row(verticalAlignment = Alignment.CenterVertically) {
                                 Text(
-                                    text = "${String.format("%.0f", pump.currentVolumeMl)}ml",
+                                    text = "${String.format(Locale.US, "%.0f", pump.currentVolumeMl)}ml",
                                     style = MaterialTheme.typography.labelSmall,
                                     modifier = Modifier.width(40.dp)
                                 )
@@ -333,7 +336,7 @@ fun SpectralSection(
 ) {
     Column {
         SettingsSectionHeader(
-            icon = "🌈",
+            icon = Icons.Default.ColorLens,
             title = "Spectral Sensor",
             subtitle = uiState.spectralConnectionStatus,
             expanded = expanded,
@@ -406,7 +409,7 @@ fun SpectralSection(
                     modifier = Modifier.fillMaxWidth(),
                     enabled = uiState.spectralConnectionStatus == "Ready" || uiState.spectralConnectionStatus.startsWith("Data")
                 ) {
-                    Icon(Icons.Default.Refresh, null)
+                    Icon(imageVector = Icons.Default.Refresh, contentDescription = null)
                     Spacer(Modifier.width(8.dp))
                     Text("Optimize Signal Gain")
                 }
@@ -416,9 +419,7 @@ fun SpectralSection(
                     modifier = Modifier.fillMaxWidth(),
                     enabled = uiState.spectralConnectionStatus == "Ready" || uiState.spectralConnectionStatus.startsWith("Data")
                 ) {
-                    Icon(Icons.Outlined.PlayArrow, null)
-                    Spacer(Modifier.width(8.dp))
-                    Icon(Icons.Outlined.PlayArrow, null)
+                    Icon(imageVector = Icons.Outlined.PlayArrow, contentDescription = null)
                     Spacer(Modifier.width(8.dp))
                     Text("Trigger Reading")
                 }
@@ -440,7 +441,7 @@ fun SpectralSection(
                             // Simple visualization of the list
                             Text(
                                 data.chunked(6).joinToString("\n") { chunk ->
-                                    chunk.joinToString(", ") { "%.0f".format(it) }
+                                    chunk.joinToString(", ") { String.format(Locale.US, "%.0f", it) }
                                 },
                                 style = MaterialTheme.typography.bodySmall,
                                 fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace
@@ -464,7 +465,7 @@ fun ColorMixingSection(
 ) {
     Column {
         SettingsSectionHeader(
-            icon = "🎨",
+            icon = Icons.Default.Science,
             title = "Color Mixing Algorithm",
             subtitle = if (uiState.useKubelkaMunk) "Kubelka-Munk (Spectral)" else "RGB-based (Simple)",
             expanded = expanded,
@@ -501,7 +502,7 @@ fun ColorMixingSection(
                         verticalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
                         Text(
-                            "⚠️ More accurate but may be slower on older devices",
+                            "More accurate but may be slower on older devices",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.tertiary
                         )
@@ -510,7 +511,7 @@ fun ColorMixingSection(
                             onClick = onEditKSValues,
                             modifier = Modifier.fillMaxWidth()
                         ) {
-                            Text("📊 Edit K/S Values")
+                            Text("Edit K/S Values")
                         }
 
                         HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
@@ -544,7 +545,7 @@ fun StrengthSlider(name: String, value: Float, color: Color, settingsViewModel: 
             verticalAlignment = Alignment.CenterVertically
         ) {
             Text(name, fontWeight = FontWeight.Bold, color = color)
-            Text(String.format("%.2f x", value), style = MaterialTheme.typography.bodyMedium)
+            Text(String.format(Locale.US, "%.2f x", value), style = MaterialTheme.typography.bodyMedium)
         }
         Slider(
             value = value,
@@ -567,7 +568,7 @@ fun PulseSection(
 ) {
     Column {
         SettingsSectionHeader(
-            icon = "🔄",
+            icon = Icons.Default.Sync,
             title = "Pulse Mode",
             subtitle = if (uiState.usePulseMode) "Enabled" else "Disabled",
             expanded = expanded,
@@ -639,8 +640,8 @@ fun PulseSection(
                 if (showTuningDialogForPumpIndex != null) {
                     val index = showTuningDialogForPumpIndex!!
                     val pump = uiState.pumps.getOrNull(index)
-                        if (pump != null) {
-                            PulseTuningDialog(
+                    if (pump != null) {
+                        PulseTuningDialog(
                                 pump = pump,
                                 isTuning = uiState.isTuning,
                                 tuningPhaseOffset = uiState.tuningPhaseOffset,
@@ -670,7 +671,7 @@ fun PulseSection(
 
                 if (uiState.usePulseMode) {
                     Text(
-                        "💡 Tip: Before dispensing, visually check that each pump roller is aligned to its home position (just past the compression point).",
+                        "Tip: Before dispensing, visually check that each pump roller is aligned to its home position (just past the compression point).",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.primary
                     )
@@ -678,7 +679,7 @@ fun PulseSection(
                     HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
                     
                     Text(
-                        "⚡ Pump Geometry (for velocity compensation)",
+                        "Pump Geometry (for velocity compensation)",
                         style = MaterialTheme.typography.titleSmall,
                         fontWeight = FontWeight.Bold
                     )
@@ -696,15 +697,15 @@ fun PulseSection(
                             modifier = Modifier.padding(12.dp),
                             verticalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
-                            Text("📐 Pump Geometry", fontWeight = FontWeight.SemiBold)
+                            Text("Pump Geometry", fontWeight = FontWeight.SemiBold)
                             
                             Row(
                                 horizontalArrangement = Arrangement.spacedBy(8.dp)
                             ) {
                                 // Local state for Pillow Length
-                                var pillowText by remember { mutableStateOf(String.format("%.1f", uiState.pillowLengthMm)) }
+                                var pillowText by remember { mutableStateOf(String.format(Locale.US, "%.1f", uiState.pillowLengthMm)) }
                                 if (pillowText.toFloatOrNull() != uiState.pillowLengthMm) {
-                                    pillowText = String.format("%.1f", uiState.pillowLengthMm)
+                                    pillowText = String.format(Locale.US, "%.1f", uiState.pillowLengthMm)
                                 }
 
                                 OutlinedTextField(
@@ -719,9 +720,9 @@ fun PulseSection(
                                     singleLine = true
                                 )
                                 // Local state for Tube ID
-                                var tubeIdText by remember { mutableStateOf(String.format("%.1f", uiState.tubeInnerDiameterMm)) }
+                                var tubeIdText by remember { mutableStateOf(String.format(Locale.US, "%.1f", uiState.tubeInnerDiameterMm)) }
                                 if (tubeIdText.toFloatOrNull() != uiState.tubeInnerDiameterMm) {
-                                    tubeIdText = String.format("%.1f", uiState.tubeInnerDiameterMm)
+                                    tubeIdText = String.format(Locale.US, "%.1f", uiState.tubeInnerDiameterMm)
                                 }
 
                                 OutlinedTextField(
@@ -738,10 +739,10 @@ fun PulseSection(
                             }
                             
                             // Local state to prevent "fighting" the formatter while typing
-                            var fullDiameterText by remember { mutableStateOf(String.format("%.1f", uiState.fullDiameterSectionMm)) }
+                            var fullDiameterText by remember { mutableStateOf(String.format(Locale.US, "%.1f", uiState.fullDiameterSectionMm)) }
                             // Update local text only if external value changes significantly
                             if (fullDiameterText.toFloatOrNull() != uiState.fullDiameterSectionMm) {
-                                fullDiameterText = String.format("%.1f", uiState.fullDiameterSectionMm)
+                                fullDiameterText = String.format(Locale.US, "%.1f", uiState.fullDiameterSectionMm)
                             }
 
                             OutlinedTextField(
@@ -766,9 +767,12 @@ fun PulseSection(
                                 )
                             ) {
                                 Column(modifier = Modifier.padding(8.dp)) {
-                                    Text("📊 Calculated Profile:", style = MaterialTheme.typography.labelMedium)
                                     Text(
-                                        "Taper Zone: $taperPercent% (${String.format("%.1f", taperLengthMm)}mm each side)",
+                                        "Calculated Profile:",
+                                        style = MaterialTheme.typography.labelMedium
+                                    )
+                                    Text(
+                                        "Taper Zone: $taperPercent% (${String.format(Locale.US, "%.1f", taperLengthMm)}mm each side)",
                                         style = MaterialTheme.typography.bodySmall
                                     )
                                     Text(
@@ -787,9 +791,9 @@ fun PulseSection(
                                 onClick = { showPumpSelectorForWizard = true },
                                 modifier = Modifier.fillMaxWidth()
                             ) {
-                                Icon(Icons.Default.Settings, null)
+                                Icon(imageVector = Icons.Default.Straighten, contentDescription = null)
                                 Spacer(modifier = Modifier.width(8.dp))
-                                Text("📐 Launch Geometry Wizard")
+                                Text("Launch Geometry Wizard")
                             }
                             
                             if (showPumpSelectorForWizard) {
@@ -858,8 +862,8 @@ fun PulseSection(
                             ) {
                                 Column(modifier = Modifier.weight(1f)) {
                                     Text(
-                                        "🚀 Dynamic Acceleration",
-                                        fontWeight = FontWeight.SemiBold,
+                                        "Dynamic Acceleration",
+                                        fontWeight = FontWeight.Bold,
                                         style = MaterialTheme.typography.bodyMedium
                                     )
                                     Text(
@@ -876,7 +880,7 @@ fun PulseSection(
                             
                             if (uiState.useDynamicAcceleration) {
                                 OutlinedTextField(
-                                    value = String.format("%.0f", uiState.taperAcceleration),
+                                    value = String.format(Locale.US, "%.0f", uiState.taperAcceleration),
                                     onValueChange = { 
                                         it.toFloatOrNull()?.let { v -> settingsViewModel.setTaperAcceleration(v) }
                                     },
@@ -893,7 +897,7 @@ fun PulseSection(
                                 )
                                 
                                 OutlinedTextField(
-                                    value = String.format("%.0f", uiState.nominalAcceleration),
+                                    value = String.format(Locale.US, "%.0f", uiState.nominalAcceleration),
                                     onValueChange = { 
                                         it.toFloatOrNull()?.let { v -> settingsViewModel.setNominalAcceleration(v) }
                                     },
@@ -927,7 +931,7 @@ fun DisplaySection(
 ) {
     Column {
         SettingsSectionHeader(
-            icon = "📊",
+            icon = Icons.Default.Visibility,
             title = "Display Settings",
             subtitle = "Preview options and warnings",
             expanded = expanded,
@@ -957,11 +961,11 @@ fun DisplaySection(
                             checked = uiState.showRealPaintPreview,
                             onCheckedChange = { settingsViewModel.toggleRealPaintPreview(it) }
                         )
-                        Text("🎨 Show 'Real Paint' Preview")
+                        Text("Show 'Real Paint' Preview")
                     }
 
                     Text(
-                        "⚠️ This feature is currently inaccurate and under development",
+                        "This feature is currently inaccurate and under development",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.error,
                         modifier = Modifier.padding(start = 40.dp)
@@ -991,7 +995,7 @@ fun DataSection(
 ) {
     Column {
         SettingsSectionHeader(
-            icon = "💾",
+            icon = Icons.Default.Storage,
             title = "Data Management",
             subtitle = "Export and import backups",
             expanded = expanded,
@@ -1045,7 +1049,7 @@ fun DebugSection(
 ) {
     Column {
         SettingsSectionHeader(
-            icon = "🐛",
+            icon = Icons.Default.BugReport,
             title = "Debug Options",
             subtitle = "Developer and experimental features",
             expanded = expanded,
@@ -1082,14 +1086,7 @@ fun DebugSection(
                         checked = uiState.spectralSensorEnabled,
                         onCheckedChange = { settingsViewModel.toggleSpectralSensor(it) }
                     )
-                    Column {
-                        Text("Enable Spectral Sensor")
-                        Text(
-                            "Unlock AS7265x Triad integration",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = Color.Gray
-                        )
-                    }
+                    Text("Force Enable Spectral Bridge")
                 }
 
                 // --- Rotation Calibration ---
@@ -1099,9 +1096,9 @@ fun DebugSection(
                     onClick = { showRotationCalibration = true },
                     modifier = Modifier.fillMaxWidth()
                 ) {
-                    Icon(Icons.Default.Refresh, null)
+                    Icon(imageVector = Icons.Default.Refresh, contentDescription = null)
                     Spacer(modifier = Modifier.width(8.dp))
-                    Text("🔄 Calibrate Motor Rotation (Steps/Rev)")
+                    Text("Calibrate Motor Rotation (Steps/Rev)")
                 }
 
                 if (showRotationCalibration) {
@@ -1121,7 +1118,7 @@ fun DebugSection(
                 HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
 
                 Text(
-                    "⚙️ FluidNC Speed Limits",
+                    "FluidNC Speed Limits",
                     fontWeight = FontWeight.SemiBold,
                     style = MaterialTheme.typography.bodyMedium
                 )
@@ -1132,7 +1129,7 @@ fun DebugSection(
                 )
 
                 OutlinedTextField(
-                    value = String.format("%.0f", uiState.maxFeedRate),
+                    value = String.format(Locale.US, "%.0f", uiState.maxFeedRate),
                     onValueChange = {
                         it.toFloatOrNull()?.let { v -> settingsViewModel.setMaxFeedRate(v) }
                     },
@@ -1164,25 +1161,8 @@ fun SinglePumpSettingsDialog(
     val uiState by settingsViewModel.uiState.collectAsState()
     val pump = uiState.pumps.getOrNull(pumpIndex) ?: return
 
-    var showPrimeDialogForAxis by rememberSaveable { mutableStateOf<String?>(null) }
     var showRefillDialogForIndex by rememberSaveable { mutableStateOf<Int?>(null) }
-    var showAxisSelector by rememberSaveable { mutableStateOf(false) }
-    
-    var showChooser by rememberSaveable { mutableStateOf(false) }
-    var showFlowCalibrator by rememberSaveable { mutableStateOf(false) }
-    var showKSCalibration by rememberSaveable { mutableStateOf(false) }
-    var showPigmentTuner by rememberSaveable { mutableStateOf(false) }
-    var showRollerCalibration by rememberSaveable { mutableStateOf(false) }
 
-    if (showPrimeDialogForAxis != null) {
-        PrimingDialog(
-            onDismissRequest = { showPrimeDialogForAxis = null },
-            onConfirm = { amount ->
-                showPrimeDialogForAxis?.let { axis -> mixViewModel.primePump(axis, amount) }
-                showPrimeDialogForAxis = null
-            }
-        )
-    }
 
     if (showRefillDialogForIndex != null) {
         RefillDialog(
@@ -1197,159 +1177,7 @@ fun SinglePumpSettingsDialog(
         )
     }
     
-    if (showAxisSelector) {
-        val axes = listOf("X", "Y", "Z", "A", "B")
-        AlertDialog(
-            onDismissRequest = { showAxisSelector = false },
-            title = { Text("Select Axis for ${pump.name}") },
-            text = {
-                Column {
-                    axes.forEach { axis ->
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp)
-                        ) {
-                            RadioButton(
-                                selected = pump.axis == axis,
-                                onClick = {
-                                    settingsViewModel.onPumpAxisChanged(pumpIndex, axis)
-                                    showAxisSelector = false
-                                }
-                            )
-                            Text(
-                                text = "Axis $axis",
-                                style = MaterialTheme.typography.bodyLarge,
-                                modifier = Modifier.padding(start = 8.dp)
-                            )
-                        }
-                    }
-                }
-            },
-            confirmButton = { TextButton(onClick = { showAxisSelector = false }) { Text("Cancel") } }
-        )
-    }
 
-    if (showChooser) {
-        AlertDialog(
-            onDismissRequest = { showChooser = false },
-            title = { Text("Calibrate ${pump.name}") },
-            text = {
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text("What would you like to calibrate?", style = MaterialTheme.typography.bodyMedium)
-                    Spacer(Modifier.height(8.dp))
-                    
-                    OutlinedButton(
-                        onClick = { 
-                            showChooser = false
-                            showFlowCalibrator = true
-                        },
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.padding(8.dp)) {
-                            Text("Flow Rate", fontWeight = FontWeight.Bold)
-                            Text("Adjust Steps/mL accuracy", style = MaterialTheme.typography.labelSmall)
-                        }
-                    }
-                    
-                    val isPigment = listOf("Cyan", "Magenta", "Yellow", "Black", "White").any { pump.name.contains(it, ignoreCase = true) }
-                    // Show color calibration for pigments - use Pigment Strength or K/S based on KM setting
-                    if (isPigment) {
-                        if (uiState.useKubelkaMunk) {
-                            // KM Enabled: K/S Calibration
-                            Button(
-                                onClick = { 
-                                    showChooser = false
-                                    showKSCalibration = true
-                                },
-                                modifier = Modifier.fillMaxWidth()
-                            ) {
-                                Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.padding(8.dp)) {
-                                    Text("Color Calibration", fontWeight = FontWeight.Bold)
-                                    Text("Scan pigment to set K/S values", style = MaterialTheme.typography.labelSmall)
-                                }
-                            }
-                        } else {
-                            // KM Disabled: Pigment Strength
-                            Button(
-                                onClick = { 
-                                    showChooser = false
-                                    showPigmentTuner = true
-                                },
-                                modifier = Modifier.fillMaxWidth()
-                            ) {
-                                Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.padding(8.dp)) {
-                                    Text("Color Calibration", fontWeight = FontWeight.Bold)
-                                    Text("Visual matching calibration", style = MaterialTheme.typography.labelSmall)
-                                }
-                            }
-                        }
-                    }
-                    
-                    // Roller Position Calibration (Pulse Mode)
-                    if (uiState.usePulseMode) {
-                        Button(
-                            onClick = { 
-                                showChooser = false
-                                showRollerCalibration = true
-                            },
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.padding(8.dp)) {
-                                Text("Roller Position", fontWeight = FontWeight.Bold)
-                                Text("Set home position for pulse mode", style = MaterialTheme.typography.labelSmall)
-                            }
-                        }
-                    }
-                }
-            },
-            confirmButton = { TextButton(onClick = { showChooser = false }) { Text("Cancel") } }
-        )
-    }
-    
-    if (showFlowCalibrator) {
-        FlowCalibratorDialog(
-            initialPumpIndex = pumpIndex,
-            mixViewModel = mixViewModel,
-            settingsViewModel = settingsViewModel,
-            lockedToPump = true,
-            onDismissRequest = { showFlowCalibrator = false }
-        )
-    }
-
-    if (showKSCalibration) {
-        val currentKS = settingsViewModel.getPigmentKS(pump.name)
-        
-        SimpleKMCalibrationDialog(
-            pigmentName = pump.name,
-            currentKSColor = currentKS,
-            onCalibrated = { newKSColor ->
-                settingsViewModel.updatePigmentKS(pump.name, newKSColor)
-            },
-            onDismissRequest = { showKSCalibration = false },
-            mixViewModel = mixViewModel,
-            settingsViewModel = settingsViewModel
-        )
-    }
-    
-    if (showPigmentTuner) {
-        PigmentTunerDialog(
-            onDismissRequest = { showPigmentTuner = false },
-            mixViewModel = mixViewModel,
-            lockedColor = pump.name,
-            settingsViewModel = settingsViewModel
-        )
-    }
-    
-    if (showRollerCalibration) {
-        RollerPositionDialog(
-            pump = pump,
-            onDismiss = { showRollerCalibration = false },
-            onSavePosition = { offsetSteps ->
-                settingsViewModel.savePumpAngle(pumpIndex, offsetSteps, null)
-                showRollerCalibration = false
-            }
-        )
-    }
 
     AlertDialog(
         onDismissRequest = onDismissRequest,
@@ -1359,27 +1187,37 @@ fun SinglePumpSettingsDialog(
                 verticalArrangement = Arrangement.spacedBy(16.dp),
                 modifier = Modifier.fillMaxWidth()
             ) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.SpaceBetween
-                ) {
-                    TextButton(onClick = { showAxisSelector = true }) {
-                        Text("Axis: ${pump.axis}", fontWeight = FontWeight.Bold)
-                    }
-                    
-                    OutlinedButton(onClick = { showChooser = true }) {
-                        Text("Calibrate")
-                    }
+                // Pigment Strength Slider
+                val colorKey = pump.name.lowercase()
+                val strength = when(colorKey) {
+                    "cyan" -> uiState.pigmentStrengths.cyan
+                    "magenta" -> uiState.pigmentStrengths.magenta
+                    "yellow" -> uiState.pigmentStrengths.yellow
+                    "black" -> uiState.pigmentStrengths.black
+                    "white" -> uiState.pigmentStrengths.white
+                    else -> null
                 }
-
-                OutlinedButton(
-                    onClick = { showPrimeDialogForAxis = pump.axis },
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Icon(Icons.Outlined.PlayArrow, null, modifier = Modifier.size(18.dp))
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text("Prime Pump")
+                
+                if (strength != null) {
+                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Text(
+                            "Pigment Strength",
+                            style = MaterialTheme.typography.labelMedium,
+                            fontWeight = FontWeight.Bold
+                        )
+                        StrengthSlider(
+                            name = pump.name,
+                            value = strength,
+                            color = Color(pump.colorArgb),
+                            settingsViewModel = settingsViewModel
+                        )
+                        Text(
+                            "Higher values = stronger pigment (less volume used)",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                    HorizontalDivider()
                 }
 
                 HorizontalDivider()

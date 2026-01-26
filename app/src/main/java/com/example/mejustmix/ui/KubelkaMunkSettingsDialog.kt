@@ -21,6 +21,11 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.mejustmix.services.KSColor
 import com.example.mejustmix.services.KubelkaMunkColorMixing
+import java.util.Locale
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.*
+import androidx.compose.material.icons.outlined.CloudDownload
+import androidx.compose.material.icons.outlined.CloudUpload
 
 /**
  * Dialog for managing Kubelka-Munk K/S values (3-channel).
@@ -30,7 +35,8 @@ import com.example.mejustmix.services.KubelkaMunkColorMixing
 fun KubelkaMunkSettingsDialog(
     settingsViewModel: SettingsViewModel,
     onDismissRequest: () -> Unit,
-    mixViewModel: MixViewModel? = null
+    mixViewModel: MixViewModel? = null,
+    onImportRequest: () -> Unit = {}
 ) {
     val uiState by settingsViewModel.uiState.collectAsState()
     val database = uiState.kmDatabase
@@ -79,7 +85,7 @@ fun KubelkaMunkSettingsDialog(
         )
     }
     
-    AlertDialog(
+    BasicAlertDialog(
         onDismissRequest = onDismissRequest,
         modifier = Modifier.fillMaxWidth(0.95f).fillMaxHeight(0.9f)
     ) {
@@ -174,7 +180,9 @@ fun KubelkaMunkSettingsDialog(
                         contentColor = pigmentTextColors[selectedPigment] ?: Color.White
                     )
                 ) {
-                    Text("📸 Calibrate $selectedPigment", fontWeight = FontWeight.Bold)
+                    Icon(imageVector = Icons.Default.CameraAlt, contentDescription = null)
+                    Spacer(Modifier.width(8.dp))
+                    Text("Calibrate $selectedPigment", fontWeight = FontWeight.Bold)
                 }
                 
                 Spacer(modifier = Modifier.height(16.dp))
@@ -297,7 +305,7 @@ fun KubelkaMunkSettingsDialog(
                                 }
                                 
                                 OutlinedTextField(
-                                    value = String.format("%.2f", ksColor.s),
+                                    value = String.format(Locale.US, "%.2f", ksColor.s),
                                     onValueChange = { newText ->
                                         newText.toFloatOrNull()?.let { newS ->
                                             val safeS = newS.coerceAtLeast(0.01f)
@@ -328,6 +336,32 @@ fun KubelkaMunkSettingsDialog(
                 
                 Spacer(modifier = Modifier.height(16.dp))
                 
+                // Data management buttons
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    OutlinedButton(
+                        onClick = { settingsViewModel.exportKSDatabase() },
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Icon(imageVector = Icons.Outlined.CloudDownload, contentDescription = null, modifier = Modifier.size(18.dp))
+                        Spacer(Modifier.width(8.dp))
+                        Text("Export KS")
+                    }
+                    
+                    OutlinedButton(
+                        onClick = onImportRequest,
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Icon(imageVector = Icons.Outlined.CloudUpload, contentDescription = null, modifier = Modifier.size(18.dp))
+                        Spacer(Modifier.width(8.dp))
+                        Text("Import KS")
+                    }
+                }
+                
+                Spacer(modifier = Modifier.height(8.dp))
+
                 // Action Buttons
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -360,7 +394,7 @@ private fun KSValueEditor(
     onValueChange: (Float) -> Unit,
     modifier: Modifier = Modifier
 ) {
-    var textValue by remember(value) { mutableStateOf(String.format("%.2f", value)) }
+    var textValue by remember(value) { mutableStateOf(String.format(Locale.US, "%.2f", value)) }
     
     Column(
         modifier = modifier,

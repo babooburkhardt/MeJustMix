@@ -9,16 +9,19 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.togetherWith
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
@@ -27,8 +30,11 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.RadioButton
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Tab
 import androidx.compose.material3.TabRow
+import androidx.compose.material3.TabRowDefaults
+import androidx.compose.material3.TabRowDefaults.tabIndicatorOffset
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -39,11 +45,14 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.zIndex
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -53,8 +62,6 @@ fun SettingsModal(
     onDismissRequest: () -> Unit
 ) {
     val uiState by settingsViewModel.uiState.collectAsState()
-    val activeMachine by settingsViewModel.machineManager.activeMachine.collectAsState()
-    val context = LocalContext.current
 
     // Permissions for BLE
     val permissionsLauncher = rememberLauncherForActivityResult(
@@ -160,7 +167,7 @@ fun SettingsModal(
                                     Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.padding(8.dp)) {
                                         Text("Color Calibration", fontWeight = FontWeight.Bold)
                                         if (uiState.spectralSensorEnabled) {
-                                            Text("Open Guided Wizard ✨", style = MaterialTheme.typography.labelSmall)
+                                            Text("Open Guided Wizard", style = MaterialTheme.typography.labelSmall)
                                         } else {
                                             Text("Manual Entry / View K/S", style = MaterialTheme.typography.labelSmall)
                                         }
@@ -203,6 +210,13 @@ fun SettingsModal(
         } else {
             calibrationChooserIndex = null
         }
+    }
+
+    // KS Import Launcher
+    val ksImportLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenDocument()
+    ) { uri ->
+        uri?.let { settingsViewModel.importKSDatabase(it) }
     }
 
     // 2. Sub-Dialogs
@@ -263,7 +277,8 @@ fun SettingsModal(
         KubelkaMunkSettingsDialog(
             settingsViewModel = settingsViewModel,
             onDismissRequest = { showKubelkaMunkSettings = false },
-            mixViewModel = mixViewModel
+            mixViewModel = mixViewModel,
+            onImportRequest = { ksImportLauncher.launch(arrayOf("application/json")) }
         )
     }
     
@@ -373,8 +388,8 @@ fun SettingsModal(
     AlertDialog(
         onDismissRequest = onDismissRequest,
         modifier = Modifier
-            .widthIn(max = 650.dp) // Professional tablet width
-            .fillMaxWidth(0.95f), // Edge padding on phones
+            .widthIn(max = 850.dp) // Wider for tablet text layout
+            .fillMaxWidth(0.98f), // Maximize space on phones
         title = {
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -386,17 +401,59 @@ fun SettingsModal(
         },
         text = {
             Column(modifier = Modifier.fillMaxWidth()) {
-                TabRow(selectedTabIndex = selectedTabIndex) {
-                    tabs.forEachIndexed { index, title ->
-                        Tab(
-                            selected = selectedTabIndex == index,
-                            onClick = { selectedTabIndex = index },
-                            text = { Text(title) }
-                        )
+                // Pill-shaped TabRow
+                Surface(
+                    shape = RoundedCornerShape(24.dp),
+                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(bottom = 16.dp)
+                ) {
+                    TabRow(
+                        selectedTabIndex = selectedTabIndex,
+                        containerColor = Color.Transparent, // Let Surface handle background
+                        divider = {}, // Remove default line
+                        indicator = { tabPositions ->
+                            // Custom sliding pill indicator
+                            if (selectedTabIndex < tabPositions.size) {
+                                Box(
+                                    Modifier
+                                        .tabIndicatorOffset(tabPositions[selectedTabIndex])
+                                        .fillMaxHeight()
+                                        .padding(4.dp)
+                                        .background(
+                                            color = MaterialTheme.colorScheme.primary,
+                                            shape = RoundedCornerShape(20.dp)
+                                        )
+                                )
+                            }
+                        },
+                        modifier = Modifier.height(48.dp)
+                    ) {
+                        tabs.forEachIndexed { index, title ->
+                            val selected = selectedTabIndex == index
+                            Tab(
+                                selected = selected,
+                                onClick = { selectedTabIndex = index },
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(20.dp))
+                                    .zIndex(2f), // Ensure text is above indicator
+                                text = {
+                                    Text(
+                                        text = title,
+                                        style = MaterialTheme.typography.labelLarge,
+                                        fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal,
+                                        color = if (selected) {
+                                            MaterialTheme.colorScheme.onPrimary
+                                        } else {
+                                            MaterialTheme.colorScheme.onSurfaceVariant
+                                        }
+                                    )
+                                }
+                            )
+                        }
                     }
                 }
-                
-                Spacer(modifier = Modifier.height(16.dp))
                 
                 // Content area with stable height to prevent vertical jitter
                 // Responsive: Use 70% of screen height (capped at 600dp for massive tablets)

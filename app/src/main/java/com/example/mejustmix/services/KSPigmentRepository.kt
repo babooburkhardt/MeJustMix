@@ -16,13 +16,6 @@ data class KSColor(
         ksB = ksB * factor,
         s = s 
     )
-    
-    fun scale(factor: Float): KSColor = KSColor(
-        ksR = ksR * factor,
-        ksG = ksG * factor,
-        ksB = ksB * factor,
-        s = s * factor
-    )
 }
 
 data class KSPigmentDatabase(
@@ -31,6 +24,12 @@ data class KSPigmentDatabase(
     val yellow: KSColor,
     val black: KSColor,
     val white: KSColor
+)
+
+data class KSCalibrationBundle(
+    val version: Int = 1,
+    val database: KSPigmentDatabase,
+    val strengths: PigmentStrengths
 )
 
 /**
