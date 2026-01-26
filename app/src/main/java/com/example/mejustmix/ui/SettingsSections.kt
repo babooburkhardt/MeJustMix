@@ -101,6 +101,7 @@ fun ConnectionSection(
             onClick = onHeaderClick
         )
 
+        // Use if (expanded) instead of AnimatedVisibility to let the parent animateContentSize handle the transition
         AnimatedVisibility(
             visible = expanded,
             enter = expandVertically() + fadeIn(),

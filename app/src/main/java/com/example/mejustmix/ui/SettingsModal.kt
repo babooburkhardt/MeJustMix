@@ -17,6 +17,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -352,6 +353,9 @@ fun SettingsModal(
     // --- MAIN SETTINGS UI ---
     AlertDialog(
         onDismissRequest = onDismissRequest,
+        modifier = Modifier
+            .widthIn(max = 650.dp) // Professional tablet width
+            .fillMaxWidth(0.95f), // Edge padding on phones
         title = {
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -375,13 +379,15 @@ fun SettingsModal(
                 
                 Spacer(modifier = Modifier.height(16.dp))
                 
-                // Content
-                // Use a fixed height or weight for the scrollable area
-                // Content
-                // Use a fixed height or weight for the scrollable area
+                // Content area with stable height to prevent vertical jitter
+                // Responsive: Use 70% of screen height (capped at 600dp for massive tablets)
+                val configuration = LocalConfiguration.current
+                val screenHeight = configuration.screenHeightDp.dp
+                val adaptiveHeight = minOf(screenHeight * 0.7f, 600.dp)
+
                 Box(modifier = Modifier
-                    .weight(1f, fill = false)
-                    .animateContentSize(animationSpec = tween(300, easing = androidx.compose.animation.core.FastOutSlowInEasing))
+                    .fillMaxWidth()
+                    .height(adaptiveHeight) 
                 ) {
                      AnimatedContent(
                          targetState = selectedTabIndex,
