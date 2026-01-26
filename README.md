@@ -20,7 +20,7 @@ To build the full 5-pump mixer, you will need:
 * **5x** [TMC2209 stepper driver](https://a.co/d/hhsNy26) (or any other stepper driver, its just these are silent by default with our setup, so no stepper noise everytime you make paint)
 * **1x** [24v 5a power supply](https://a.co/d/igveDYC)
 * **5x** [Nema 17 Stepper Motors](https://a.co/d/8bX0HPr) (any Standard nema17 size, except **do not** use pancake motors)
-* **5x** Compact Planetary Gear for Nema17 (4:1 ratio) - *See Credits below or description of MeJustMix on printables* 
+* **5x** [Compact Planetary Gear for Nema17](https://www.printables.com/@ZeVeX_22610) (4:1 ratio) - *See Credits below or description of MeJustMix on printables* 
 
 **Printed Parts**
 * **5x** 3D Printed Pumps
