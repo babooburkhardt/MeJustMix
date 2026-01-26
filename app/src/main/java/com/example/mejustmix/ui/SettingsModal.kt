@@ -568,6 +568,14 @@ fun SettingsModal(
                                     }
                                     
                                     Button(
+                                        onClick = { settingsViewModel.triggerSpectralWarmup() },
+                                        modifier = Modifier.fillMaxWidth(),
+                                        enabled = uiState.spectralConnectionStatus == "Ready" || uiState.spectralConnectionStatus.startsWith("Data")
+                                    ) {
+                                        Text("Warmup Sensor (LED)")
+                                    }
+
+                                    Button(
                                         onClick = { settingsViewModel.triggerSpectralScan() },
                                         modifier = Modifier.fillMaxWidth(),
                                         enabled = uiState.spectralConnectionStatus == "Ready" || uiState.spectralConnectionStatus.startsWith("Data")

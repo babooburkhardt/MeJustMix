@@ -117,6 +117,17 @@ class SpectralSensorManager(private val context: Context) {
             bluetoothGatt!!.writeCharacteristic(controlCharacteristic)
         }
     }
+
+    fun triggerWarmup() {
+        if (bluetoothGatt != null && controlCharacteristic != null) {
+            _connectionState.value = "Warming up sensor..."
+            val commandByte: Byte = 3
+            controlCharacteristic!!.value = byteArrayOf(commandByte)
+            bluetoothGatt!!.writeCharacteristic(controlCharacteristic)
+        } else {
+            _connectionState.value = "Not Connected"
+        }
+    }
     
     private fun processBuffer() {
         if (scanBuffer.isEmpty()) return
