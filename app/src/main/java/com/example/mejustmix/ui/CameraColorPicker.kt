@@ -45,11 +45,12 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
-import androidx.core.content.ContextCompat
 import com.google.accompanist.permissions.ExperimentalPermissionsApi
 import com.google.accompanist.permissions.isGranted
 import com.google.accompanist.permissions.rememberPermissionState
-import java.util.concurrent.Executors
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.asExecutor
+import kotlinx.coroutines.withContext
 
 /**
  * Redesigned Camera Color Picker - Clean, minimal UI that stays within card bounds.
@@ -154,52 +155,53 @@ private fun CameraContentMinimal(
         }
     }
 
-    // Setup camera
+    // Setup camera on background thread
     LaunchedEffect(previewView) {
         val view = previewView ?: return@LaunchedEffect
         
-        val cameraProviderFuture = ProcessCameraProvider.getInstance(context)
-        cameraProviderFuture.addListener({
-            val provider = cameraProviderFuture.get()
-            val preview = Preview.Builder().build()
-            preview.setSurfaceProvider(view.surfaceProvider)
+        // Get camera provider on IO thread
+        val provider = withContext(Dispatchers.IO) {
+            ProcessCameraProvider.getInstance(context).get()
+        }
+        
+        val preview = Preview.Builder().build()
+        preview.setSurfaceProvider(view.surfaceProvider)
 
-            val imageAnalysis = ImageAnalysis.Builder()
-                .setOutputImageFormat(ImageAnalysis.OUTPUT_IMAGE_FORMAT_RGBA_8888)
-                .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
-                .build()
+        val imageAnalysis = ImageAnalysis.Builder()
+            .setOutputImageFormat(ImageAnalysis.OUTPUT_IMAGE_FORMAT_RGBA_8888)
+            .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
+            .build()
 
-            var lastAnalysisTime = 0L
-            val analysisIntervalMs = 50L
+        var lastAnalysisTime = 0L
+        val analysisIntervalMs = 50L
 
-            imageAnalysis.setAnalyzer(Executors.newSingleThreadExecutor()) { image ->
-                val currentTime = System.currentTimeMillis()
-                try {
-                    if (currentTime - lastAnalysisTime >= analysisIntervalMs) {
-                        rawColor = getCenterColor(image)
-                        lastAnalysisTime = currentTime
-                    }
-                } catch (e: Exception) {
-                    e.printStackTrace()
-                } finally {
-                    image.close()
-                }
-            }
-
+        imageAnalysis.setAnalyzer(Dispatchers.Default.asExecutor()) { image ->
+            val currentTime = System.currentTimeMillis()
             try {
-                provider.unbindAll()
-                val camera = provider.bindToLifecycle(
-                    lifecycleOwner,
-                    CameraSelector.DEFAULT_BACK_CAMERA,
-                    preview,
-                    imageAnalysis
-                )
-                cameraControl = camera.cameraControl
-                exposureState = camera.cameraInfo.exposureState
+                if (currentTime - lastAnalysisTime >= analysisIntervalMs) {
+                    rawColor = getCenterColor(image)
+                    lastAnalysisTime = currentTime
+                }
             } catch (e: Exception) {
                 e.printStackTrace()
+            } finally {
+                image.close()
             }
-        }, ContextCompat.getMainExecutor(context))
+        }
+
+        try {
+            provider.unbindAll()
+            val camera = provider.bindToLifecycle(
+                lifecycleOwner,
+                CameraSelector.DEFAULT_BACK_CAMERA,
+                preview,
+                imageAnalysis
+            )
+            cameraControl = camera.cameraControl
+            exposureState = camera.cameraInfo.exposureState
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
     }
 
     DisposableEffect(Unit) {

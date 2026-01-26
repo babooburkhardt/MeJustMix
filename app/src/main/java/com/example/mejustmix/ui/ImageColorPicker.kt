@@ -62,6 +62,9 @@ import coil.request.ImageRequest
 import java.io.File
 import java.io.FileOutputStream
 import kotlin.math.min
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import android.util.LruCache
 
 @Composable
 fun ImageColorPicker(
@@ -451,5 +454,115 @@ private fun copyUriToCache(context: Context, sourceUri: Uri): Uri? {
     } catch (e: Exception) {
         e.printStackTrace()
         null
+    }
+}
+
+/**
+ * In-memory LRU cache for decoded bitmaps.
+ * Sized to ~1/8 of available memory, holds recently viewed images.
+ */
+private object BitmapCache {
+    private val maxMemory = (Runtime.getRuntime().maxMemory() / 1024).toInt()
+    private val cacheSize = maxMemory / 8 // Use 1/8th of available memory
+    
+    val cache: LruCache<String, Bitmap> = object : LruCache<String, Bitmap>(cacheSize) {
+        override fun sizeOf(key: String, bitmap: Bitmap): Int {
+            return bitmap.byteCount / 1024
+        }
+    }
+    
+    fun get(uri: Uri): Bitmap? = cache.get(uri.toString())
+    
+    fun put(uri: Uri, bitmap: Bitmap) {
+        cache.put(uri.toString(), bitmap)
+    }
+}
+
+/**
+ * Load bitmap on IO thread with caching and downsampling.
+ * HEIC and other slow formats benefit from caching - decode once, reuse.
+ */
+private suspend fun loadOptimizedBitmap(context: Context, uri: Uri): Bitmap? {
+    // Check cache first (fast path)
+    BitmapCache.get(uri)?.let { return it }
+    
+    // Decode on IO thread
+    return withContext(Dispatchers.IO) {
+        try {
+            // First, get image dimensions without loading the full bitmap
+            val options = BitmapFactory.Options().apply {
+                inJustDecodeBounds = true
+            }
+            context.contentResolver.openInputStream(uri)?.use { stream ->
+                BitmapFactory.decodeStream(stream, null, options)
+            }
+            
+            // Calculate sample size for downsampling large images
+            val maxDimension = 2048 // Max dimension to keep memory reasonable
+            val sampleSize = calculateInSampleSize(options, maxDimension, maxDimension)
+            
+            // Now load the actual bitmap with downsampling
+            val loadOptions = BitmapFactory.Options().apply {
+                inSampleSize = sampleSize
+                inPreferredConfig = Bitmap.Config.ARGB_8888
+            }
+            
+            var bitmap: Bitmap? = null
+            context.contentResolver.openInputStream(uri)?.use { stream ->
+                bitmap = BitmapFactory.decodeStream(stream, null, loadOptions)
+            }
+            
+            // Handle EXIF rotation
+            val result = bitmap?.let { bmp ->
+                val rotation = getExifRotation(context, uri)
+                if (rotation != 0) {
+                    val matrix = Matrix().apply { postRotate(rotation.toFloat()) }
+                    val rotated = Bitmap.createBitmap(bmp, 0, 0, bmp.width, bmp.height, matrix, true)
+                    if (rotated != bmp) bmp.recycle()
+                    rotated
+                } else {
+                    bmp
+                }
+            }
+            
+            // Cache the result
+            result?.let { BitmapCache.put(uri, it) }
+            
+            result
+        } catch (e: Exception) {
+            e.printStackTrace()
+            null
+        }
+    }
+}
+
+private fun calculateInSampleSize(options: BitmapFactory.Options, reqWidth: Int, reqHeight: Int): Int {
+    val (height, width) = options.outHeight to options.outWidth
+    var inSampleSize = 1
+    
+    if (height > reqHeight || width > reqWidth) {
+        val halfHeight = height / 2
+        val halfWidth = width / 2
+        
+        while ((halfHeight / inSampleSize) >= reqHeight && (halfWidth / inSampleSize) >= reqWidth) {
+            inSampleSize *= 2
+        }
+    }
+    return inSampleSize
+}
+
+private fun getExifRotation(context: Context, uri: Uri): Int {
+    return try {
+        context.contentResolver.openInputStream(uri)?.use { stream ->
+            val exif = ExifInterface(stream)
+            when (exif.getAttributeInt(ExifInterface.TAG_ORIENTATION, ExifInterface.ORIENTATION_NORMAL)) {
+                ExifInterface.ORIENTATION_ROTATE_90 -> 90
+                ExifInterface.ORIENTATION_ROTATE_180 -> 180
+                ExifInterface.ORIENTATION_ROTATE_270 -> 270
+                else -> 0
+            }
+        } ?: 0
+    } catch (e: Exception) {
+        0
     }
 }
