@@ -23,9 +23,9 @@ To build the full 5-pump mixer, you will need:
 * **5x** [Compact Planetary Gear for Nema17](https://www.printables.com/@ZeVeX_22610) (4:1 ratio) - *See Credits below or description of MeJustMix on printables* 
 
 **Printed Parts**
-* **5x** 3D Printed Pumps
-* **5x** 3D Printed hose adapters
-* **1x** 3D Printed Housing
+* **5x** 3D Printed Pumps (FDM reccomended, if using resin, you will need lube)
+* **5x** 3D Printed hose adapters (Must use resin or it WILL leak)
+* **1x** 3D Printed Housing (resin reccomende, but optional)
 
 **Hardware**
 * **15x** [Skateboard Bearings](https://a.co/d/cYjuKLy) (Standard 608)
