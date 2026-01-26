@@ -352,15 +352,10 @@ fun SettingsModal(
         title = {
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
+                horizontalArrangement = Arrangement.Center,
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Text("Settings", style = MaterialTheme.typography.headlineSmall)
-                Text(
-                     "v1.12.3",
-                     style = MaterialTheme.typography.bodySmall,
-                     color = Color.Gray
-                )
             }
         },
         text = {
@@ -383,8 +378,8 @@ fun SettingsModal(
                      AnimatedContent(
                          targetState = selectedTabIndex,
                          transitionSpec = {
-                             fadeIn() + slideInHorizontally { width -> if (targetState > initialState) width else -width } togetherWith
-                             fadeOut() + slideOutHorizontally { width -> if (targetState > initialState) -width else width }
+                             (fadeIn() + slideInHorizontally { width -> if (targetState > initialState) width else -width })
+                                 .togetherWith(fadeOut() + slideOutHorizontally { width -> if (targetState > initialState) -width else width })
                          },
                          label = "TabContent"
                      ) { page ->
