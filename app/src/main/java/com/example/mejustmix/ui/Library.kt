@@ -9,6 +9,11 @@ import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.animation.core.animateFloatAsState
@@ -35,6 +40,7 @@ import androidx.compose.material.icons.filled.FilterList
 import androidx.compose.material.icons.outlined.Palette
 import androidx.compose.material.icons.outlined.PhotoLibrary
 import androidx.compose.material3.*
+import androidx.compose.material3.TabRowDefaults.tabIndicatorOffset
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -55,6 +61,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.zIndex
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.window.Dialog
 import coil.compose.AsyncImage
@@ -129,24 +136,85 @@ fun Library(mixViewModel: MixViewModel) {
                 fontWeight = FontWeight.Bold,
                 modifier = Modifier.padding(start = 8.dp, bottom = 8.dp)
             )
-            SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
-                tabs.forEachIndexed { index, title ->
-                    SegmentedButton(
-                        shape = SegmentedButtonDefaults.itemShape(index = index, count = tabs.size),
-                        onClick = { selectedTab = index },
-                        selected = selectedTab == index
-                    ) {
-                        Text(title)
+            // Pill-shaped Library Tabs
+            Surface(
+                shape = RoundedCornerShape(24.dp),
+                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(bottom = 8.dp)
+            ) {
+                TabRow(
+                    selectedTabIndex = selectedTab,
+                    containerColor = Color.Transparent,
+                    divider = {},
+                    indicator = { tabPositions ->
+                        if (selectedTab < tabPositions.size) {
+                            Box(
+                                Modifier
+                                    .tabIndicatorOffset(tabPositions[selectedTab])
+                                    .fillMaxHeight()
+                                    .padding(4.dp)
+                                    .background(
+                                        color = MaterialTheme.colorScheme.primary,
+                                        shape = RoundedCornerShape(20.dp)
+                                    )
+                            )
+                        }
+                    },
+                    modifier = Modifier.height(48.dp)
+                ) {
+                    tabs.forEachIndexed { index, title ->
+                        val selected = selectedTab == index
+                        val iconColor = if (selected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant
+                        
+                        Tab(
+                            selected = selected,
+                            onClick = { selectedTab = index },
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(20.dp))
+                                .zIndex(2f),
+                            text = {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.Center
+                                ) {
+                                    Icon(
+                                        imageVector = if (index == 0) Icons.Outlined.Palette else Icons.Outlined.PhotoLibrary,
+                                        contentDescription = null,
+                                        modifier = Modifier.size(18.dp),
+                                        tint = iconColor
+                                    )
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Text(
+                                        text = title,
+                                        style = MaterialTheme.typography.labelMedium,
+                                        fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal,
+                                        color = iconColor
+                                    )
+                                }
+                            }
+                        )
                     }
                 }
             }
             
             Spacer(modifier = Modifier.height(16.dp))
 
-            // Content based on selected tab with animation
+            // Content based on selected tab with horizontal slide animation
             AnimatedContent(
                 targetState = selectedTab,
-                label = "tabContent"
+                transitionSpec = {
+                    val duration = 300
+                    if (targetState > initialState) {
+                        (slideInHorizontally(animationSpec = tween(duration)) { it } + fadeIn(animationSpec = tween(duration)))
+                            .togetherWith(slideOutHorizontally(animationSpec = tween(duration)) { -it } + fadeOut(animationSpec = tween(duration)))
+                    } else {
+                        (slideInHorizontally(animationSpec = tween(duration)) { -it } + fadeIn(animationSpec = tween(duration)))
+                            .togetherWith(slideOutHorizontally(animationSpec = tween(duration)) { it } + fadeOut(animationSpec = tween(duration)))
+                    }
+                },
+                label = "LibraryTabTransition"
             ) { tab ->
                 when (tab) {
                     0 -> ColorLibraryContent(mixViewModel, libraryItems)

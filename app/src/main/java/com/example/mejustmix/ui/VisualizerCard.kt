@@ -1,11 +1,16 @@
 package com.example.mejustmix.ui
 
 import android.net.Uri
+import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.tween
 import androidx.compose.animation.expandHorizontally
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkHorizontally
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
@@ -19,6 +24,7 @@ import androidx.compose.material.icons.filled.Science
 import androidx.compose.material.icons.outlined.Image
 import androidx.compose.material.icons.outlined.Palette
 import androidx.compose.material3.*
+import androidx.compose.material3.TabRowDefaults.tabIndicatorOffset
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.listSaver
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -31,6 +37,7 @@ import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.zIndex
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.drawscope.Stroke
@@ -127,48 +134,107 @@ fun VisualizerCard(
                 .then(if (fillHeight) Modifier.fillMaxSize() else Modifier),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
-                tabs.forEachIndexed { index, title ->
-                    SegmentedButton(
-                        shape = SegmentedButtonDefaults.itemShape(index = index, count = tabs.size),
-                        onClick = { selectedTab = index },
-                        selected = selectedTab == index,
-                        icon = {
-                            when (title) {
-                                "Wheel" -> Icon(Icons.Outlined.Palette, null)
-                                "Photo" -> Icon(Icons.Outlined.Image, null)
-                                "Camera" -> Icon(Icons.Filled.CameraAlt, null)
-                                "Sensor" -> Text("🌈") // Or a sensor icon
-                                else -> null
-                            }
+            // Pill-shaped TabRow for Wheel/Photo/Camera/Sensor
+            Surface(
+                shape = RoundedCornerShape(24.dp),
+                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp)
+            ) {
+                TabRow(
+                    selectedTabIndex = selectedTab,
+                    containerColor = Color.Transparent,
+                    divider = {},
+                    indicator = { tabPositions ->
+                        if (selectedTab < tabPositions.size) {
+                            Box(
+                                Modifier
+                                    .tabIndicatorOffset(tabPositions[selectedTab])
+                                    .fillMaxHeight()
+                                    .padding(4.dp)
+                                    .background(
+                                        color = MaterialTheme.colorScheme.primary,
+                                        shape = RoundedCornerShape(20.dp)
+                                    )
+                            )
                         }
-                    ) { Text(title) }
+                    },
+                    modifier = Modifier.height(48.dp)
+                ) {
+                    tabs.forEachIndexed { index, title ->
+                        val selected = selectedTab == index
+                        val iconColor = if (selected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant
+                        Tab(
+                            selected = selected,
+                            onClick = { selectedTab = index },
+                            modifier = Modifier.clip(RoundedCornerShape(20.dp)).zIndex(2f),
+                            text = {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.Center
+                                ) {
+                                    when (title) {
+                                        "Wheel" -> Icon(Icons.Outlined.Palette, null, modifier = Modifier.size(18.dp), tint = iconColor)
+                                        "Photo" -> Icon(Icons.Outlined.Image, null, modifier = Modifier.size(18.dp), tint = iconColor)
+                                        "Camera" -> Icon(Icons.Filled.CameraAlt, null, modifier = Modifier.size(18.dp), tint = iconColor)
+                                        "Sensor" -> Text("🌈", fontSize = 14.sp)
+                                    }
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Text(
+                                        text = title,
+                                        style = MaterialTheme.typography.labelMedium,
+                                        fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal,
+                                        color = iconColor
+                                    )
+                                }
+                            }
+                        )
+                    }
                 }
             }
 
             Spacer(modifier = Modifier.height(16.dp))
 
-            val pickerModifier = if (fillHeight) {
+            val pickerModifierBase = if (fillHeight) {
                 Modifier.fillMaxWidth().weight(1f)
             } else {
-                Modifier.fillMaxWidth().height(when(selectedTab) { 0 -> 300.dp; 1 -> 400.dp; else -> 500.dp })
+                Modifier.fillMaxWidth()
             }
 
-            when (tabs.getOrNull(selectedTab)) {
-                "Wheel" -> CircularColorPicker(color, { mixViewModel.setColor(it) }, pickerModifier)
-                "Photo" -> ImageColorPicker(images, { images = it }, { mixViewModel.setColor(it) }, { uri -> photoToSave = uri; showSavePhotoDialog = true }, pickerModifier, requestedImageUri, { mixViewModel.setCurrentImage(null) })
-                "Camera" -> CameraColorPicker({ color -> mixViewModel.setColor(color); selectedTab = 0 }, { selectedTab = 0 })
-                "Sensor" -> SensorColorPicker(
-                    settingsState = settingsState,
-                    onTriggerScan = { settingsViewModel.triggerSpectralScan() },
-                    onSetTarget = { data -> 
-                        mixViewModel.setTargetColorFromSpectral(data)
-                        selectedTab = 0 // Go back to Wheel/Preview
-                    },
-                    onExportData = { settingsViewModel.exportSpectralData() },
-                    onImportData = onImportSpectralData,
-                    modifier = pickerModifier
+            AnimatedContent(
+                targetState = selectedTab,
+                transitionSpec = {
+                    val duration = 300
+                    if (targetState > initialState) {
+                        (slideInHorizontally(animationSpec = tween(duration)) { it } + fadeIn(animationSpec = tween(duration)))
+                            .togetherWith(slideOutHorizontally(animationSpec = tween(duration)) { -it } + fadeOut(animationSpec = tween(duration)))
+                    } else {
+                        (slideInHorizontally(animationSpec = tween(duration)) { -it } + fadeIn(animationSpec = tween(duration)))
+                            .togetherWith(slideOutHorizontally(animationSpec = tween(duration)) { it } + fadeOut(animationSpec = tween(duration)))
+                    }
+                },
+                label = "VisualizerContentTransition"
+            ) { targetIndex ->
+                val currentTab = tabs.getOrNull(targetIndex)
+                val pickerModifier = pickerModifierBase.then(
+                    if (!fillHeight) Modifier.height(when(targetIndex) { 0 -> 300.dp; 1 -> 400.dp; else -> 500.dp }) else Modifier
                 )
+                
+                when (currentTab) {
+                    "Wheel" -> CircularColorPicker(color, { mixViewModel.setColor(it) }, pickerModifier)
+                    "Photo" -> ImageColorPicker(images, { images = it }, { mixViewModel.setColor(it) }, { uri -> photoToSave = uri; showSavePhotoDialog = true }, pickerModifier, requestedImageUri, { mixViewModel.setCurrentImage(null) })
+                    "Camera" -> CameraColorPicker({ color -> mixViewModel.setColor(color); selectedTab = 0 }, { selectedTab = 0 })
+                    "Sensor" -> SensorColorPicker(
+                        settingsState = settingsState,
+                        onTriggerScan = { settingsViewModel.triggerSpectralScan() },
+                        onSetTarget = { data -> 
+                            mixViewModel.setTargetColorFromSpectral(data)
+                            selectedTab = 0 // Go back to Wheel/Preview
+                        },
+                        onExportData = { settingsViewModel.exportSpectralData() },
+                        onImportData = onImportSpectralData,
+                        modifier = pickerModifier
+                    )
+                }
             }
 
             Spacer(modifier = Modifier.height(16.dp))
