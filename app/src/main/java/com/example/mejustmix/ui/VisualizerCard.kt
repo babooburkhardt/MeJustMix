@@ -23,8 +23,18 @@ import androidx.compose.material.icons.filled.CameraAlt
 import androidx.compose.material.icons.filled.Science
 import androidx.compose.material.icons.outlined.Image
 import androidx.compose.material.icons.outlined.Palette
-import androidx.compose.material3.*
-import androidx.compose.material3.TabRowDefaults.tabIndicatorOffset
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.Icon
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.Snackbar
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.listSaver
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -34,15 +44,14 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.ui.zIndex
-import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.graphics.Path
-import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.foundation.Canvas
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.mejustmix.ui.theme.getBrightness
@@ -124,47 +133,29 @@ fun VisualizerCard(
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
             // Pill-shaped TabRow for Wheel/Photo/Camera/Sensor
+            // Use compact mode (icon-only for unselected) when 4+ tabs
+            val useCompactTabs = tabs.size >= 4
+            
             ModernPillTabRow(
                 selectedTabIndex = selectedTab,
-                modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp)
+                modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp),
+                compact = useCompactTabs
             ) {
                 tabs.forEachIndexed { index, title ->
-                    if (title == "Sensor") {
-                        val selected = selectedTab == index
-                        val contentColor = if (selected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant
-                        Tab(
-                            selected = selected,
-                            onClick = { selectedTab = index },
-                            modifier = Modifier.clip(RoundedCornerShape(20.dp)).zIndex(2f),
-                            text = {
-                                Row(
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.Center
-                                ) {
-                                    Text("🌈", fontSize = 14.sp)
-                                    Spacer(modifier = Modifier.width(6.dp))
-                                    Text(
-                                        text = title,
-                                        style = MaterialTheme.typography.labelMedium,
-                                        fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal,
-                                        color = contentColor
-                                    )
-                                }
-                            }
-                        )
-                    } else {
-                        ModernPillTab(
-                            selected = selectedTab == index,
-                            onClick = { selectedTab = index },
-                            text = title,
-                            icon = when (title) {
-                                "Wheel" -> Icons.Outlined.Palette
-                                "Photo" -> Icons.Outlined.Image
-                                "Camera" -> Icons.Filled.CameraAlt
-                                else -> null
-                            }
-                        )
-                    }
+                    val isSelected = selectedTab == index
+                    ModernPillTab(
+                        selected = isSelected,
+                        onClick = { selectedTab = index },
+                        text = title,
+                        icon = when (title) {
+                            "Wheel" -> Icons.Outlined.Palette
+                            "Photo" -> Icons.Outlined.Image
+                            "Camera" -> Icons.Filled.CameraAlt
+                            "Sensor" -> Icons.Filled.Science
+                            else -> null
+                        },
+                        compact = useCompactTabs
+                    )
                 }
             }
 
