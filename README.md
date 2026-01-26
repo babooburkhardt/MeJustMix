@@ -16,38 +16,38 @@ For the STLs, and motor mounts, head over to the project page:
 To build the full 5-pump mixer, you will need:
 
 **Electronics & Motors**
-* **1x** MKS TinyBee (Motherboard)
-* **5x** TMC2209 stepper driver (or any other stepper driver, its just these are silent by default with our setup, so no stepper noise everytime you make paint)
-* **1x** 24v 5a power supply
-* **5x** Nema 17 Stepper Motors (Standard size, **do not** use pancake motors)
-* **5x** Compact Planetary Gear for Nema17 (4:1 ratio) - *See Credits below or description of MeJustMix on printables* 
+* **1x** [MKS TinyBee](https://a.co/d/3X2XGmC) (Motherboard)
+* **5x** [TMC2209 stepper driver](https://a.co/d/hhsNy26) (or any other stepper driver, its just these are silent by default with our setup, so no stepper noise everytime you make paint)
+* **1x** [24v 5a power supply](https://a.co/d/igveDYC)
+* **5x** [Nema 17 Stepper Motors](https://a.co/d/8bX0HPr) (any Standard nema17 size, except **do not** use pancake motors)
+* **5x** [Compact Planetary Gear for Nema17](https://www.printables.com/@ZeVeX_22610) (4:1 ratio) - *See Credits below or description of MeJustMix on printables* 
 
-**Printed Parts**
-* **5x** 3D Printed Pumps
-* **5x** 3D Printed hose adapters
-* **1x** 3D Printed Housing
+**Printed Parts** - I will set up a section on PCBway for a marketplace to get resin parts or FDM parts for those who dont own a printer.
+* **5x** 3D Printed Pumps (FDM reccomended, if using resin, you will need lube)
+* **5x** 3D Printed hose adapters (Must use resin or it WILL leak)
+* **1x** 3D Printed Housing (resin reccomende, but optional)
 
 **Hardware**
-* **15x** Skateboard Bearings (Standard 608)
-* **15x** M3 Hex Nuts
-* **20x** M3 Heatset Inserts (5mm diameter x 4mm length)
-
-**Screws (Flat/Countersunk M3)**
-* **20x** 25mm M3 screws
-* **15x** 16mm M3 screws
-* **20x** 6mm M3 screws
+* **15x** [Skateboard Bearings](https://a.co/d/cYjuKLy) (Standard 608)
+* **[Screw Assortment](https://a.co/d/it1I78U)** (this has all but the heatset inserts and skate bearings)
+* **15x** M3 Hex Nuts (in screw assortment)
+* **20x** 25mm M3 screws (in screw assortment)
+* **15x** 16mm M3 screws (in screw assortment)
+* **20x** 6mm M3 screws (in screw assortment)
+* **20x** [M3 Heatset Inserts](https://a.co/d/5PxoURc) (5mm diameter x 4mm length)
 
 **Plumbing**
-* **Silicone Tubing:** 3mm ID x 5mm OD (8ft+ recommended) Larger and smaller sizes can fit, up to 8mm outer diameter. But I found 3mm inner diameter to be the sweet spot between flow and accuracy. Inner diameter MUST be 2mm smaller than the outer diamter, or you can custom design your own insert to adjust the spacing. I left it modular for this reason
-* **5x** Mio "Water Enhancer" caps (or generic store brand equivalents. I used the Kroger/Smiths store brand in my original model for cost reasons). these bottle caps use squeeze valves that we will
+* [**Silicone Tubing:**](https://a.co/d/109G1Nu) 3mm ID x 5mm OD (8ft+ recommended) Larger and smaller sizes can fit, up to 8mm outer diameter. But I found 3mm inner diameter to be the sweet spot between flow and accuracy. Inner diameter MUST be 2mm smaller than the outer diamter, or you can custom design your own insert to adjust the spacing. I left it modular for this reason
+* [**Luer Lock G18 needle**](https://a.co/d/7jotTo9)
+* (OPTIONAL alternative to luer lock g18) **5x** Mio "Water Enhancer" caps (or generic store brand equivalents. I used the Kroger/Smiths store brand in my original model for cost reasons). these bottle caps use squeeze valves that we will
   "harvest" by cutting away the extra plastic.
   
 **Paint - Liquitex Acrylic Basic Fluid** (if you dont want to fight the quick calibrator, stick to these exact paints, others will be supported later)
-* **Cadmium Yellow Medium Hue**
-* **Phthanlocyanine Blue**
-* **Mars Black** (or carbon black, but mars black is cheaper an does the same for our use)
-* **Quinacridone Magenta**
-* **Titanium White**
+* [**Cadmium Yellow Medium Hue**](https://a.co/d/0aRB7Bl)
+* [**Phthanlocyanine Blue**](https://a.co/d/6JxlL5G)
+* [**Mars Black**](https://a.co/d/33VU7aW) (or carbon black, but mars black is cheaper an does the same for our use)
+* [**Quinacridone Magenta**](https://a.co/d/2lmyL3s)
+* [**Titanium White**](https://a.co/d/jlMkRhW)
 
 ---
 
