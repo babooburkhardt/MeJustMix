@@ -12,6 +12,10 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
 
 /**
  * Repository for handling interactions with the FluidNC Printer.
@@ -22,6 +26,7 @@ class PrinterRepository private constructor(context: Context) {
     
     // Store application context to avoid memory leaks
     private val appContext: Context = context.applicationContext
+    private val repositoryScope = CoroutineScope(Dispatchers.Main + SupervisorJob())
 
     companion object {
         @Volatile
@@ -87,7 +92,17 @@ class PrinterRepository private constructor(context: Context) {
         bleManager = FluidNCBLEManager(appContext)
         
         // Monitor BLE connection state and convert to FluidNCStatus
-        // TODO: Collect bleManager.connectionState and map to FluidNCStatus
+        repositoryScope.launch {
+            bleManager?.connectionState?.collect { state ->
+                val status = when (state) {
+                    "Ready", "Connected" -> FluidNCStatus("Connected", "IDLE")
+                    "Disconnected" -> null
+                    "Bluetooth Disabled" -> FluidNCStatus("Error", "BT_OFF")
+                    else -> FluidNCStatus("Connecting", state)
+                }
+                _connectionStatus.value = status
+            }
+        }
         
         if (!machine.bleAddress.isNullOrBlank()) {
             bleManager?.connectByAddress(machine.bleAddress)

@@ -878,8 +878,8 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
         val stepsPerPulse = if (pump.stepsPerPulse > 0) pump.stepsPerPulse else PulseModeCalculator.MotorSpecs.STEPS_PER_PULSE
         val totalSteps = (pulseCount * stepsPerPulse).toInt()
         
-        // TODO: Send G-code command to dispense
-        // Example: sendGCodeToController("G0 ${pump.axis}$totalSteps")
+        // Send G-code command to dispense
+        sendGCodeToController("G0 ${pump.axis}$totalSteps")
         
         // After dispensing, update the offset (pump has moved)
         _uiState.update { state ->
@@ -893,24 +893,14 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
         showToast("Dispensing $pulseCount pulses from ${pump.name}")
     }
     
-    // TODO: Implement this based on your motor controller communication
-    // Example implementations:
-    /*
+    /**
+     * Helper to send G-code commands to the active machine.
+     */
     private fun sendGCodeToController(gcode: String) {
-        // If using HTTP:
-        // val url = "http://${_uiState.value.ipAddress}:${_uiState.value.webPortalPort}/gcode"
-        // httpClient.post(url) { body = gcode }
-        
-        // If using WebSocket:
-        // webSocket.send(gcode)
-        
-        // If using Serial:
-        // serialPort.write(gcode.toByteArray())
-        
-        // Placeholder for now:
-        println("G-code: $gcode")
+        viewModelScope.launch {
+            printerRepository.sendRaw(listOf(gcode))
+        }
     }
-    */
     // --- Spectral Sensor Methods ---
     
     fun connectSpectralSensor() {
