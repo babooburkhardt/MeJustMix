@@ -377,7 +377,12 @@ fun SettingsModal(
                 
                 // Content
                 // Use a fixed height or weight for the scrollable area
-                Box(modifier = Modifier.weight(1f, fill = false)) {
+                // Content
+                // Use a fixed height or weight for the scrollable area
+                Box(modifier = Modifier
+                    .weight(1f, fill = false)
+                    .animateContentSize(animationSpec = tween(300, easing = androidx.compose.animation.core.FastOutSlowInEasing))
+                ) {
                      AnimatedContent(
                          targetState = selectedTabIndex,
                          transitionSpec = {
@@ -390,15 +395,6 @@ fun SettingsModal(
                                  .togetherWith(
                                      fadeOut(tween(exitDuration)) + 
                                      slideOutHorizontally(tween(exitDuration, easing = androidx.compose.animation.core.FastOutLinearInEasing)) { width -> if (targetState > initialState) -width else width }
-                                 )
-                                 .using(
-                                     SizeTransform(
-                                         clip = false,
-                                         sizeAnimationSpec = { _, _ ->
-                                             // Fast resize (200ms) as requested
-                                             tween(200, easing = androidx.compose.animation.core.FastOutSlowInEasing)
-                                         }
-                                     )
                                  )
                          },
                          label = "TabContent"
