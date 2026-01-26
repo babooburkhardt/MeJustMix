@@ -795,6 +795,44 @@ fun SettingsModal(
                                     ) {
                                         Text("📊 Edit K/S Values")
                                     }
+
+                                    HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
+                                    
+                                    Text("Manual Pigment Weights", style = MaterialTheme.typography.titleSmall)
+                                    Text(
+                                        "Fine-tune strength without re-calibrating. Higher = Stronger pigment.",
+                                        style = MaterialTheme.typography.bodySmall, color = Color.Gray
+                                    )
+                                    
+                                    val strengths = uiState.pigmentStrengths
+                                    
+                                    // Helper composable for Strength Slider
+                                    @Composable
+                                    fun StrengthSlider(name: String, value: Float, color: Color) {
+                                        Column {
+                                            Row(
+                                                modifier = Modifier.fillMaxWidth(),
+                                                horizontalArrangement = Arrangement.SpaceBetween,
+                                                verticalAlignment = Alignment.CenterVertically
+                                            ) {
+                                                Text(name, fontWeight = FontWeight.Bold, color = color)
+                                                Text(String.format("%.2f x", value), style = MaterialTheme.typography.bodyMedium)
+                                            }
+                                            Slider(
+                                                value = value,
+                                                onValueChange = { settingsViewModel.updatePigmentStrength(name, it) },
+                                                valueRange = 0.5f..3.0f,
+                                                steps = 24, // 0.1 steps
+                                                modifier = Modifier.height(30.dp)
+                                            )
+                                        }
+                                    }
+
+                                    StrengthSlider("Cyan", strengths.cyan, Color(0xFF00BCD4))
+                                    StrengthSlider("Magenta", strengths.magenta, Color(0xFFE91E63))
+                                    StrengthSlider("Yellow", strengths.yellow, Color(0xFFFFC107))
+                                    StrengthSlider("Black", strengths.black, Color.Black)
+                                    StrengthSlider("White", strengths.white, Color.Gray)
                                 }
                             }
                         }

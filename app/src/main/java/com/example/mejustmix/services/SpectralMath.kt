@@ -65,6 +65,22 @@ object SpectralMath {
         return KSColor(ksRed, ksGreen, ksBlue, 1.0f)
     }
     
+    fun calculateFullKSSpectrum(sample: List<Float>, whiteRef: List<Float>, darkRef: List<Float>? = null): List<Float>? {
+        if (sample.size != 18 && sample.size != 10) return null
+        if (whiteRef.size != sample.size) return null
+        if (darkRef != null && darkRef.size != sample.size) return null
+        
+        val reflectance = sample.mapIndexed { i, s ->
+            val w = whiteRef[i]
+            val d = darkRef?.get(i) ?: 0f
+            val n = (s - d).coerceAtLeast(0f)
+            val denom = (w - d).coerceAtLeast(1f)
+            if (denom == 0f) 0.01f else (n / denom).coerceIn(0.01f, 0.99f)
+        }
+        
+        return reflectance.map { r -> ColorPhysicsEngine.reflectanceToKS(r) }
+    }
+    
     /**
      * Converts raw 18-channel spectral data directly to an RGB Int.
      * Use this when you just want to Show the color on screen.

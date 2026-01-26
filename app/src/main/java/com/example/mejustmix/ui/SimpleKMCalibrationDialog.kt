@@ -16,6 +16,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.example.mejustmix.data.PaintMix
 import com.example.mejustmix.services.GCodeGenerator
 import com.example.mejustmix.services.KSColor
@@ -53,6 +54,7 @@ fun SimpleKMCalibrationDialog(
 
     // STATE: Spectral Sensor (Shared between steps)
     var whiteReference by remember { mutableStateOf<List<Float>?>(null) }
+    var spectralKSVals by remember { mutableStateOf<List<Float>?>(null) }
     val spectralEnabled = settingsViewModel?.uiState?.collectAsState()?.value?.spectralSensorEnabled == true
 
     // Re-calculate S whenever mix input changes
@@ -167,6 +169,7 @@ fun SimpleKMCalibrationDialog(
                                                 if (whiteReference != null && sample != null && whiteReference!!.size == 18 && sample.size == 18) {
                                                 // 1. Calculate K/S from Spectral Data
                                                 val resultKS = KubelkaMunkColorMixing.calculateKSFromSpectral(sample, whiteReference!!)
+                                                spectralKSVals = com.example.mejustmix.services.SpectralMath.calculateFullKSSpectrum(sample, whiteReference!!, settingsState.darkReference)
                                                 
                                                 if (resultKS != null) {
                                                     // 2. Set the pure KS
@@ -263,17 +266,84 @@ fun SimpleKMCalibrationDialog(
                             }
                         }
                         
-                        // K/S result (Shared)
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceEvenly
+                        // K/S Table Result
+                        Card(
+                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                            border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
                         ) {
-                            KSValueChip("R", pureKS.ksR, Color(0xFFEF5350))
-                            KSValueChip("G", pureKS.ksG, Color(0xFF66BB6A))
-                            KSValueChip("B", pureKS.ksB, Color(0xFF42A5F5))
+                            Column(modifier = Modifier.padding(12.dp).fillMaxWidth()) {
+                                Text("Current K/S Values (Absorption)", style = MaterialTheme.typography.labelMedium, color = Color.Gray)
+                                Spacer(Modifier.height(8.dp))
+                                
+                                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                                    Text("Channel", fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
+                                    Text("Value", fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
+                                    Text("Controls", fontWeight = FontWeight.Bold, modifier = Modifier.weight(1.5f))
+                                }
+                                Divider(Modifier.padding(vertical = 4.dp))
+                                
+                                val rowStyle = MaterialTheme.typography.bodyMedium
+                                
+                                @Composable
+                                fun KSRow(channel: String, value: Float, controls: String, color: Color) {
+                                    Row(Modifier.fillMaxWidth().padding(vertical = 4.dp), horizontalArrangement = Arrangement.SpaceBetween) {
+                                        Text(channel, color = color, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
+                                        Text("%.4f".format(value), style = rowStyle, modifier = Modifier.weight(1f))
+                                        Text(controls, style = rowStyle, color = Color.Gray, modifier = Modifier.weight(1.5f))
+                                    }
+                                }
+                                
+                                KSRow("Red", pureKS.ksR, "Cyan Amount", Color(0xFFEF5350))
+                                KSRow("Green", pureKS.ksG, "Magenta Amount", Color(0xFF66BB6A))
+                                KSRow("Blue", pureKS.ksB, "Yellow Amount", Color(0xFF42A5F5))
+                            }
                         }
                     }
                 }
+
+                        // Spectral Data Grid (If Available)
+                        if (spectralKSVals != null) {
+                            Spacer(Modifier.height(16.dp))
+                            Text("Spectral K/S Profile", style = MaterialTheme.typography.titleSmall)
+                            Card(
+                                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha=0.5f)),
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Column(Modifier.padding(8.dp)) {
+                                    val wavelengths = if (spectralKSVals!!.size <= 10) 
+                                        listOf(415, 445, 480, 515, 555, 590, 630, 680)
+                                    else 
+                                        listOf(410, 435, 460, 485, 510, 535, 560, 585, 610, 645, 680, 705, 730, 760, 810, 860, 900, 940)
+                                    
+                                    val dataPairs = spectralKSVals!!.zip(wavelengths)
+                                    
+                                    dataPairs.chunked(4).forEach { rowItems ->
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp), 
+                                            horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                        ) {
+                                            rowItems.forEach { (ks, wl) ->
+                                                Surface(
+                                                    color = MaterialTheme.colorScheme.surface,
+                                                    shape = RoundedCornerShape(4.dp),
+                                                    modifier = Modifier.weight(1f)
+                                                ) {
+                                                    Column(
+                                                        modifier = Modifier.padding(4.dp), 
+                                                        horizontalAlignment = Alignment.CenterHorizontally
+                                                    ) {
+                                                        Text("${wl}nm", style = MaterialTheme.typography.labelSmall, color = Color.Gray, fontSize = 10.sp)
+                                                        Text("%.2f".format(ks), style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                                                    }
+                                                }
+                                            }
+                                            // Fill empty space if row is incomplete
+                                            repeat(4 - rowItems.size) { Spacer(Modifier.weight(1f)) }
+                                        }
+                                    }
+                                }
+                            }
+                        }
 
                 // ================= STEP 2: TINT STRENGTH =================
                 Card(
