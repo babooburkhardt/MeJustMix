@@ -42,11 +42,57 @@ fun SimpleKMCalibrationDialog(
     var previewColorPure by remember { mutableStateOf(currentRGB) }
     var pureKS by remember { mutableStateOf(currentKSColor) }
     
-    // STATE: Mix Color (Step 2 - Optional)
+    // Helper to calculate expected tint color from current S and K values
+    val calculateExpectedTintFromS = remember(currentKSColor) {
+        {
+            // Create a temporary mix of 50% Pigment + 50% White
+            val pS = currentKSColor.s
+            
+            // Reconstruct K values from K/S * S
+            val pK_r = currentKSColor.ksR * pS
+            val pK_g = currentKSColor.ksG * pS
+            val pK_b = currentKSColor.ksB * pS
+            
+            val wK = 0.01f // White K
+            val wS = 1.0f  // White S
+            
+            val mixS = 0.5f*pS + 0.5f*wS
+            val mixK_r = 0.5f*pK_r + 0.5f*wK
+            val mixK_g = 0.5f*pK_g + 0.5f*wK
+            val mixK_b = 0.5f*pK_b + 0.5f*wK
+            
+            val mixKS_r = mixK_r / mixS
+            val mixKS_g = mixK_g / mixS
+            val mixKS_b = mixK_b / mixS
+            
+            val tempKS = KSColor(mixKS_r, mixKS_g, mixKS_b, 1.0f)
+            KubelkaMunkColorMixing.ksToRGB(tempKS)
+        }
+    }
+
     // Initialize toggle based on whether S is already calibrated (not 1.0)
-    var useMixCalibration by remember { mutableStateOf(kotlin.math.abs(currentKSColor.s - 1.0f) > 0.001f) }
-    var hexInputMix by remember { mutableStateOf("#FFFFFF") }
-    var previewColorMix by remember { mutableStateOf(AndroidColor.WHITE) }
+    val isCalibrated = kotlin.math.abs(currentKSColor.s - 1.0f) > 0.001f
+    var useMixCalibration by remember { mutableStateOf(isCalibrated || currentKSColor.tintHex != null) }
+    
+    // Auto-populate the Hex:
+    // 1. Prefer explicitly stored tint hex (user entered)
+    // 2. Fallback to reverse-calculated color if calibrated but missing hex (legacy)
+    // 3. Default to White
+    val initialMixColor = remember(currentKSColor) {
+        if (currentKSColor.tintHex != null) {
+            try { AndroidColor.parseColor(currentKSColor.tintHex) } catch (e: Exception) { 
+               if (isCalibrated) calculateExpectedTintFromS() else AndroidColor.WHITE
+            }
+        } else if (isCalibrated) {
+            calculateExpectedTintFromS()
+        } else {
+            AndroidColor.WHITE
+        }
+    }
+    
+    // Initialize hex input with stored value if possible, else formatted int
+    var hexInputMix by remember { mutableStateOf(currentKSColor.tintHex ?: String.format("#%06X", initialMixColor and 0xFFFFFF)) }
+    var previewColorMix by remember { mutableStateOf(initialMixColor) }
     var calculatedS by remember { mutableFloatStateOf(currentKSColor.s) }
     
     var errorMessage by remember { mutableStateOf<String?>(null) }
@@ -70,6 +116,10 @@ fun SimpleKMCalibrationDialog(
                 // Ignore invalid hex while typing
             }
         } else {
+            // ONLY reset calculatedS if we are NOT calibrated initially or explicitly turned it off
+            // Actually, if toggle is OFF, S should technically be 1.0. 
+            // But strict reset might be annoying if toggling back and forth.
+            // For now, consistent with "Off = Default" logic:
             calculatedS = 1.0f
         }
     }
@@ -523,7 +573,8 @@ fun SimpleKMCalibrationDialog(
                                     ksR = pureKS.ksR,
                                     ksG = pureKS.ksG,
                                     ksB = pureKS.ksB,
-                                    s = calculatedS
+                                    s = calculatedS,
+                                    tintHex = if (useMixCalibration) hexInputMix else null
                                 )
                                 onCalibrated(finalKS)
                                 onDismissRequest()

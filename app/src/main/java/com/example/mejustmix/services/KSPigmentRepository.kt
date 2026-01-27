@@ -8,13 +8,15 @@ data class KSColor(
     val ksR: Float,
     val ksG: Float,
     val ksB: Float,
-    val s: Float = 1.0f
+    val s: Float = 1.0f,
+    val tintHex: String? = null
 ) {
     fun scaleKS(factor: Float): KSColor = KSColor(
         ksR = ksR * factor,
         ksG = ksG * factor,
         ksB = ksB * factor,
-        s = s 
+        s = s,
+        tintHex = tintHex
     )
 }
 
