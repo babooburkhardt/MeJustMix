@@ -842,12 +842,11 @@ fun PulseSection(
                                     onJog = { steps ->
                                         settingsViewModel.jogPumpWithBacklash(wizardPumpIndex, steps)
                                     },
-                                    onSave = { taperStartSteps, taperLengthMm, fullDiameterMm ->
-                                        settingsViewModel.saveGeometryFromWizard(
+                                    onSave = { taperStartSteps, taperEndSteps ->
+                                        settingsViewModel.saveGeometryFromWizardDegrees(
                                             wizardPumpIndex,
                                             taperStartSteps,
-                                            taperLengthMm,
-                                            fullDiameterMm
+                                            taperEndSteps
                                         )
                                     },
                                     onDismiss = { showGeometryWizard = false }

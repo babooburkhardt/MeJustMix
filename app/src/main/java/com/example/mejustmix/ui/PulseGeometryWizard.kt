@@ -1,10 +1,7 @@
 package com.example.mejustmix.ui
 
-import androidx.compose.animation.*
-import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
@@ -14,19 +11,17 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import kotlinx.coroutines.launch
 import kotlin.math.abs
+import java.util.Locale
 
 /**
  * Pulse Geometry Wizard - Visual calibration for taper zones.
- * Users eyeball physical roller positions to define compensation geometry.
+ * Modified to work primarily in DEGREES for universal compatibility.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -34,37 +29,34 @@ fun PulseGeometryWizard(
     pump: PumpConfig,
     pumpIndex: Int,
     stepsPerPulse: Float,
-    pillowLengthMm: Float,
+    pillowLengthMm: Float, // Still passed for secondary display, but not critical for logic
     onJog: (steps: Float) -> Unit,
-    onSave: (taperStartSteps: Float, taperLengthMm: Float, fullDiameterMm: Float) -> Unit,
+    onSave: (taperStartSteps: Float, taperEndSteps: Float) -> Unit,
     onDismiss: () -> Unit
 ) {
-    var currentStep by remember { mutableStateOf(0) }
-    var currentPositionSteps by remember { mutableStateOf(0f) }
+    var currentStep by remember { mutableIntStateOf(0) }
+    var currentPositionSteps by remember { mutableFloatStateOf(0f) }
     var taperStartSteps by remember { mutableStateOf<Float?>(null) }
     var taperEndSteps by remember { mutableStateOf<Float?>(null) }
     
-    // stepsPerPulse is now passed in
     val scope = rememberCoroutineScope()
     
-    // Convert steps to degrees
+    // Convert steps to degrees (Primary Unit)
     fun stepsToDegrees(steps: Float) = (steps / stepsPerPulse) * 360f
     
-    // Convert steps to mm (approximate, assuming linear relationship)
+    // Convert steps to mm (Secondary Reference)
     fun stepsToMm(steps: Float) = (steps / stepsPerPulse) * pillowLengthMm
     
     // Jog with backlash compensation
     fun jogWithBacklash(steps: Float) {
         scope.launch {
-            if (steps < 0) {
-                // Reverse: overshoot by 5 steps, then return
-                val overshoot = 5f
-                onJog(steps - overshoot)
-                kotlinx.coroutines.delay(200)
-                onJog(overshoot)
-            } else {
-                onJog(steps)
-            }
+            // Note: Backlash logic is handled by the ViewModel/Repository, 
+            // but we track position locally for the UI.
+            // Wait, previous file had logic for overshoot here?
+            // "jogWithBacklash" passed in from parent actually calls the repository which does the overshoot.
+            // So we just call onJog. But wait, checking usage in SettingsSections, it passes { settingsViewModel.jogPumpWithBacklash(...) }
+            // So we don't need to reimplement overshoot here, just call onJog.
+            onJog(steps)
             currentPositionSteps += steps
         }
     }
@@ -95,12 +87,12 @@ fun PulseGeometryWizard(
                 ) {
                     Column {
                         Text(
-                            "📐 Geometry Wizard",
+                            "📐 Geometry Wizard (Angular)",
                             style = MaterialTheme.typography.headlineSmall,
                             fontWeight = FontWeight.Bold
                         )
                         Text(
-                            pump.name,
+                            "${pump.name} • ${String.format(Locale.US, "%.0f", stepsPerPulse)} steps/rev",
                             style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -134,7 +126,6 @@ fun PulseGeometryWizard(
                     1 -> FindTaperStartStep(
                         currentPositionSteps = currentPositionSteps,
                         stepsPerPulse = stepsPerPulse,
-                        pillowLengthMm = pillowLengthMm,
                         onJog = ::jogWithBacklash,
                         onMark = { 
                             taperStartSteps = currentPositionSteps
@@ -146,7 +137,6 @@ fun PulseGeometryWizard(
                         currentPositionSteps = currentPositionSteps,
                         taperStartSteps = taperStartSteps ?: 0f,
                         stepsPerPulse = stepsPerPulse,
-                        pillowLengthMm = pillowLengthMm,
                         onJog = ::jogWithBacklash,
                         onMark = {
                             taperEndSteps = currentPositionSteps
@@ -160,10 +150,7 @@ fun PulseGeometryWizard(
                         stepsPerPulse = stepsPerPulse,
                         pillowLengthMm = pillowLengthMm,
                         onSave = {
-                            val taperLengthSteps = abs((taperEndSteps ?: 0f) - (taperStartSteps ?: 0f))
-                            val taperLengthMm = stepsToMm(taperLengthSteps)
-                            val fullDiameterMm = pillowLengthMm - (2f * taperLengthMm)
-                            onSave(taperStartSteps ?: 0f, taperLengthMm, fullDiameterMm.coerceAtLeast(0f))
+                            onSave(taperStartSteps ?: 0f, taperEndSteps ?: 0f)
                             onDismiss()
                         },
                         onBack = { currentStep = 2 }
@@ -181,13 +168,13 @@ private fun WelcomeStep(onNext: () -> Unit) {
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
         Text(
-            "Welcome to Geometry Calibration",
+            "Welcome to Angular Calibration",
             style = MaterialTheme.typography.titleLarge,
             fontWeight = FontWeight.Bold
         )
         
         Text(
-            "This wizard will help you define the exact physical geometry of your pump's taper zones.",
+            "This wizard defines the roller geometry using rotational angles. This allows for universal calibration independent of tube length.",
             style = MaterialTheme.typography.bodyMedium
         )
         
@@ -203,28 +190,9 @@ private fun WelcomeStep(onNext: () -> Unit) {
                     fontWeight = FontWeight.Bold
                 )
                 Spacer(modifier = Modifier.height(8.dp))
-                Text("1️⃣ Find where the roller STARTS to lift off", style = MaterialTheme.typography.bodySmall)
-                Text("2️⃣ Find where the roller COMPLETELY releases", style = MaterialTheme.typography.bodySmall)
-                Text("3️⃣ Review and save your measurements", style = MaterialTheme.typography.bodySmall)
-            }
-        }
-        
-        Card(
-            colors = CardDefaults.cardColors(
-                containerColor = MaterialTheme.colorScheme.tertiaryContainer.copy(alpha = 0.3f)
-            )
-        ) {
-            Column(modifier = Modifier.padding(16.dp)) {
-                Text(
-                    "⚙️ Backlash Compensation",
-                    style = MaterialTheme.typography.titleSmall,
-                    fontWeight = FontWeight.Bold
-                )
-                Spacer(modifier = Modifier.height(8.dp))
-                Text(
-                    "When you jog backwards, the motor will automatically overshoot and return. This ensures accurate positioning despite gear play.",
-                    style = MaterialTheme.typography.bodySmall
-                )
+                Text("1️⃣ Find Angle A: Roller STARTS to lift off", style = MaterialTheme.typography.bodySmall)
+                Text("2️⃣ Find Angle B: Roller COMPLETELY releases", style = MaterialTheme.typography.bodySmall)
+                Text("3️⃣ Save the calculated Taper Angle & Phase Offset", style = MaterialTheme.typography.bodySmall)
             }
         }
         
@@ -244,7 +212,6 @@ private fun WelcomeStep(onNext: () -> Unit) {
 private fun FindTaperStartStep(
     currentPositionSteps: Float,
     stepsPerPulse: Float,
-    pillowLengthMm: Float,
     onJog: (Float) -> Unit,
     onMark: () -> Unit,
     onBack: () -> Unit
@@ -272,7 +239,7 @@ private fun FindTaperStartStep(
                 )
                 Spacer(modifier = Modifier.height(8.dp))
                 Text(
-                    "Jog the pump until the roller STARTS to lift off the flat section of the tube. This is where the taper begins.",
+                    "Jog the pump until the roller BEGINS to lift off the flat section. This is the start of the pressure release.",
                     style = MaterialTheme.typography.bodyMedium
                 )
             }
@@ -281,7 +248,6 @@ private fun FindTaperStartStep(
         JogControls(
             currentPositionSteps = currentPositionSteps,
             stepsPerPulse = stepsPerPulse,
-            pillowLengthMm = pillowLengthMm,
             onJog = onJog
         )
         
@@ -302,7 +268,7 @@ private fun FindTaperStartStep(
                 onClick = onMark,
                 modifier = Modifier.weight(1f)
             ) {
-                Text("Mark Point A")
+                Text("Mark Angle A")
                 Icon(Icons.Default.Check, null, modifier = Modifier.padding(start = 8.dp))
             }
         }
@@ -314,13 +280,11 @@ private fun FindTaperEndStep(
     currentPositionSteps: Float,
     taperStartSteps: Float,
     stepsPerPulse: Float,
-    pillowLengthMm: Float,
     onJog: (Float) -> Unit,
     onMark: () -> Unit,
     onBack: () -> Unit
 ) {
-    val distanceFromStart = currentPositionSteps - taperStartSteps
-    val distanceMm = (distanceFromStart / stepsPerPulse) * pillowLengthMm
+    val degreesFromStart = ((currentPositionSteps - taperStartSteps) / stepsPerPulse) * 360f
     
     Column(
         modifier = Modifier.fillMaxWidth(),
@@ -345,7 +309,7 @@ private fun FindTaperEndStep(
                 )
                 Spacer(modifier = Modifier.height(8.dp))
                 Text(
-                    "Continue jogging until the roller COMPLETELY releases the tube. This is where the taper ends.",
+                    "Continue jogging until the roller COMPLETELY releases the tube. The tube should be fully round.",
                     style = MaterialTheme.typography.bodyMedium
                 )
             }
@@ -362,9 +326,9 @@ private fun FindTaperEndStep(
                     .padding(12.dp),
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
-                Text("Distance from Point A:", style = MaterialTheme.typography.bodySmall)
+                Text("Angle from Point A:", style = MaterialTheme.typography.bodySmall)
                 Text(
-                    String.format("%.1f mm", distanceMm),
+                    String.format(Locale.US, "%.1f°", degreesFromStart),
                     style = MaterialTheme.typography.bodySmall,
                     fontWeight = FontWeight.Bold
                 )
@@ -374,7 +338,6 @@ private fun FindTaperEndStep(
         JogControls(
             currentPositionSteps = currentPositionSteps,
             stepsPerPulse = stepsPerPulse,
-            pillowLengthMm = pillowLengthMm,
             onJog = onJog
         )
         
@@ -395,7 +358,7 @@ private fun FindTaperEndStep(
                 onClick = onMark,
                 modifier = Modifier.weight(1f)
             ) {
-                Text("Mark Point B")
+                Text("Mark Angle B")
                 Icon(Icons.Default.Check, null, modifier = Modifier.padding(start = 8.dp))
             }
         }
@@ -412,10 +375,12 @@ private fun ReviewStep(
     onBack: () -> Unit
 ) {
     val taperLengthSteps = abs(taperEndSteps - taperStartSteps)
-    val taperLengthMm = (taperLengthSteps / stepsPerPulse) * pillowLengthMm
-    val taperLengthDegrees = (taperLengthSteps / stepsPerPulse) * 360f
-    val fullDiameterMm = pillowLengthMm - (2f * taperLengthMm)
-    val taperFraction = (taperLengthMm / pillowLengthMm) * 100f
+    val taperAngleDegrees = (taperLengthSteps / stepsPerPulse) * 360f
+    
+    // Derived values for reference
+    val taperFraction = taperAngleDegrees / 360f
+    val taperLengthMm = taperFraction * pillowLengthMm
+    val fullDiameterMm = pillowLengthMm * (1f - (2f * taperFraction))
     
     Column(
         modifier = Modifier.fillMaxWidth(),
@@ -425,11 +390,6 @@ private fun ReviewStep(
             "Step 3: Review & Save",
             style = MaterialTheme.typography.titleLarge,
             fontWeight = FontWeight.Bold
-        )
-        
-        Text(
-            "Here are the calculated values based on your measurements:",
-            style = MaterialTheme.typography.bodyMedium
         )
         
         Card(
@@ -452,30 +412,12 @@ private fun ReviewStep(
                 
                 HorizontalDivider()
                 
-                MeasurementRow("Taper Length", String.format("%.1f mm", taperLengthMm))
-                MeasurementRow("Taper Angle", String.format("%.1f°", taperLengthDegrees))
-                MeasurementRow("Full Diameter Section", String.format("%.1f mm", fullDiameterMm.coerceAtLeast(0f)))
-                MeasurementRow("Taper Fraction", String.format("%.1f%%", taperFraction))
-            }
-        }
-        
-        if (fullDiameterMm < 0) {
-            Card(
-                colors = CardDefaults.cardColors(
-                    containerColor = MaterialTheme.colorScheme.errorContainer
-                )
-            ) {
-                Row(
-                    modifier = Modifier.padding(12.dp),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    Icon(Icons.Default.Warning, null, tint = MaterialTheme.colorScheme.error)
-                    Text(
-                        "Warning: Taper length exceeds pillow length. The tube may be very soft or measurements need adjustment.",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onErrorContainer
-                    )
-                }
+                MeasurementRow("Taper Angle", String.format(Locale.US, "%.1f°", taperAngleDegrees))
+
+                // Optional: Show derived MM values for sanity check if pillow length is roughly correct
+                Text("Reference Values (based on ${String.format(Locale.US, "%.0f", pillowLengthMm)}mm tube):", style = MaterialTheme.typography.labelSmall, modifier = Modifier.padding(top=8.dp))
+                MeasurementRow("Est. Taper Length", String.format(Locale.US, "%.1f mm", taperLengthMm))
+                MeasurementRow("Est. Full Diameter", String.format(Locale.US, "%.1f mm", fullDiameterMm.coerceAtLeast(0f)))
             }
         }
         
@@ -497,7 +439,7 @@ private fun ReviewStep(
                 modifier = Modifier.weight(1f)
             ) {
                 Icon(Icons.Default.Check, null)
-                Text("Save & Apply", modifier = Modifier.padding(start = 8.dp))
+                Text("Save Geometry", modifier = Modifier.padding(start = 8.dp))
             }
         }
     }
@@ -507,11 +449,9 @@ private fun ReviewStep(
 private fun JogControls(
     currentPositionSteps: Float,
     stepsPerPulse: Float,
-    pillowLengthMm: Float,
     onJog: (Float) -> Unit
 ) {
     val currentDegrees = (currentPositionSteps / stepsPerPulse) * 360f
-    val currentMm = (currentPositionSteps / stepsPerPulse) * pillowLengthMm
     
     Column(
         modifier = Modifier.fillMaxWidth(),
@@ -535,12 +475,12 @@ private fun JogControls(
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
                 Text(
-                    String.format("%.1f°", currentDegrees),
+                    String.format(Locale.US, "%.1f°", currentDegrees % 360f), // Modulo 360 for display niceness
                     style = MaterialTheme.typography.headlineMedium,
                     fontWeight = FontWeight.Bold
                 )
                 Text(
-                    String.format("%.1f mm | %.1f steps", currentMm, currentPositionSteps),
+                    String.format(Locale.US, "%.1f steps", currentPositionSteps),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )

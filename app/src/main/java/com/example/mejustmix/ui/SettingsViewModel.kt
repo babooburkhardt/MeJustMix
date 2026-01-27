@@ -426,24 +426,74 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
 
     fun updatePumpCalibration(axis: String, value: String) {
         // Find pump before update
-        val targetPump = _uiState.value.pumps.find { it.axis == axis }
-        val oldCal = targetPump?.calibration?.toFloatOrNull() ?: 100f
+        val targetPump = _uiState.value.pumps.find { it.axis == axis } ?: return
+        val oldCal = targetPump.calibration.toFloatOrNull() ?: 100f
         val newCal = value.toFloatOrNull() ?: 100f
         
         _uiState.update { currentState ->
             val updatedPumps = currentState.pumps.map { pump ->
-                if (pump.axis == axis) pump.copy(calibration = value) else pump
+                if (pump.axis == axis) {
+                    // Update steps/mL
+                    // AND derive new mL/Pulse (physical constant) from this flow calibration
+                    // mL/Pulse = Steps/Pulse / Steps/mL
+                    val currentStepsPerPulse = pump.stepsPerPulse.takeIf { it > 0 } ?: 200f
+                    val newMlPerPulse = if (newCal > 0) currentStepsPerPulse / newCal else pump.mlPerPulse
+                    
+                    pump.copy(
+                        calibration = value,
+                        mlPerPulse = newMlPerPulse
+                    )
+                } else {
+                    pump
+                }
             }
             currentState.copy(pumps = updatedPumps)
         }
         
         // Auto-adjust pigment strength if calibration changed significantly
-        if (targetPump != null && oldCal > 0 && newCal > 0 && kotlin.math.abs(oldCal - newCal) > 0.1f) {
+        if (oldCal > 0 && newCal > 0 && kotlin.math.abs(oldCal - newCal) > 0.1f) {
             val ratio = newCal / oldCal
             adjustPigmentStrengthForPump(targetPump.name, ratio)
         }
         
         saveSettings()
+    }
+
+    /**
+     * Update steps per pulse (rotation calibration) for a specific pump.
+     * NOW AUTO-UPDATES Flow Calibration (Steps/mL) to match new motor resolution.
+     */
+    fun updateStepsPerPulse(pumpIndex: Int, stepsPerPulse: Float) {
+        val pump = _uiState.value.pumps.getOrNull(pumpIndex) ?: return
+        
+        // If we know the physical volume per rotation (mlPerPulse),
+        // we can automatically update the linear steps/mL calibration when motor steps change.
+        // New Steps/mL = New Steps/Pulse / mL/Pulse
+        val currentMlPerPulse = pump.mlPerPulse
+        
+        val newCalibration = if (currentMlPerPulse > 0.001f) {
+            stepsPerPulse / currentMlPerPulse
+        } else {
+            // Fallback: scale existing calibration by ratio of change
+            val oldSteps = pump.stepsPerPulse.takeIf { it > 0 } ?: 200f
+            val ratio = stepsPerPulse / oldSteps
+            val oldCal = pump.calibration.toFloatOrNull() ?: 100f
+            oldCal * ratio
+        }
+        
+        val updatedPump = pump.copy(
+            stepsPerPulse = stepsPerPulse,
+            calibration = String.format(Locale.US, "%.2f", newCalibration)
+        )
+        
+        _uiState.update { state ->
+            val newPumps = state.pumps.toMutableList()
+            newPumps[pumpIndex] = updatedPump
+            state.copy(pumps = newPumps)
+        }
+        
+        saveSettings()
+        showToast("${pump.name}: Rotation calibrated (${String.format(Locale.US, "%.0f", stepsPerPulse)} steps/pulse). Flow rate auto-adjusted.")
     }
     
     fun onPumpCalibrationChanged(pumpIndex: Int, newValue: String) {
@@ -1283,13 +1333,18 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
      * Saves both global geometry (tube properties) and per-pump phase offset (timing).
      * NOW AVERAGES global geometry across multiple pump measurements (Updating existing).
      */
+    /**
+     * Save geometry measurements from wizard.
+     * Saves both global geometry (tube properties) and per-pump phase offset (timing).
+     * NOW AVERAGES global geometry across multiple pump measurements (Updating existing).
+     */
     fun saveGeometryFromWizard(
         pumpIndex: Int,
         taperStartSteps: Float,
         taperLengthMm: Float,
         fullDiameterMm: Float
     ) {
-        // 1. Accumulate/Update Measurement for this Pump
+        // Legacy MM-based save (redirect to degrees if possible, or keep for compatibility)
         fullDiameterMeasurements[pumpIndex] = fullDiameterMm
         val avgFullDiameter = fullDiameterMeasurements.values.average().toFloat()
 
@@ -1311,23 +1366,55 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
         saveSettings()
         showToast("${pump.name} Saved. Global Geometry Avg (N=${fullDiameterMeasurements.size}): ${String.format("%.1f", avgFullDiameter)}mm")
     }
-    
+
     /**
-     * Update steps per pulse (rotation calibration) for a specific pump.
+     * Save geometry using angular measurements (Degrees).
+     * This is the preferred method for Step-Based G-Code as it is independent of physical tube length.
      */
-    fun updateStepsPerPulse(pumpIndex: Int, stepsPerPulse: Float) {
-        val pump = _uiState.value.pumps.getOrNull(pumpIndex) ?: return
-        val updatedPump = pump.copy(stepsPerPulse = stepsPerPulse)
+    fun saveGeometryFromWizardDegrees(
+        pumpIndex: Int,
+        taperStartSteps: Float, // Position where taper starts (Lift off)
+        taperEndSteps: Float    // Position where taper ends (Full release)
+    ) {
+        val state = _uiState.value
+        val stepsPerPulse = getEffectiveStepsPerPulse()
         
-        _uiState.update { state ->
-            val newPumps = state.pumps.toMutableList()
+        // 1. Calculate Taper Angle
+        val taperLengthSteps = kotlin.math.abs(taperEndSteps - taperStartSteps)
+        val taperAngleDegrees = (taperLengthSteps / stepsPerPulse) * 360f
+        
+        // 2. Update Global Geometry (Full Diameter Section) based on Angle
+        // We derive the linear "Full Diameter Section" from the angle to maintain compatibility with the physics engine
+        // fullDiameter = pillowLength * (1 - 2 * (angle/360))
+        val taperFraction = taperAngleDegrees / 360f
+        val newFullDiameterMm = state.pillowLengthMm * (1f - (2f * taperFraction))
+        
+        _uiState.update { 
+            it.copy(fullDiameterSectionMm = newFullDiameterMm.coerceAtLeast(0f)) 
+        }
+        
+        // 3. Save PER-PUMP phase offset (timing)
+        // The start of the taper (lift off) is our reference point for the waveform
+        val pump = state.pumps.getOrNull(pumpIndex) ?: return
+        // We save the negative offset so that 0 becomes the start of the taper? 
+        // Or we just save the offset to the home switch?
+        // Let's assume taperStartSteps IS the offset from the current "home" (0).
+        // So we update the home offset to shift the coordinate system.
+        // New Offset = Old Offset + TaperStart? 
+        // Actually, matching the logic above: `pulseHomeOffset = -taperStartSteps`
+        val updatedPump = pump.copy(pulseHomeOffset = -taperStartSteps)
+        
+        _uiState.update { s ->
+            val newPumps = s.pumps.toMutableList()
             newPumps[pumpIndex] = updatedPump
-            state.copy(pumps = newPumps)
+            s.copy(pumps = newPumps)
         }
         
         saveSettings()
-        showToast("${pump.name}: Rotation calibrated (${String.format(Locale.US, "%.0f", stepsPerPulse)} steps/pulse)")
+        showToast("Geometry Saved: Taper = ${String.format("%.1f", taperAngleDegrees)}°")
     }
+    
+
     
     // ==================== MOTOR & STEP-BASED G-CODE METHODS ====================
     

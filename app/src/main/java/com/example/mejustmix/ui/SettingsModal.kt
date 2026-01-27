@@ -399,7 +399,8 @@ fun SettingsModal(
         ),
         modifier = Modifier
             .widthIn(max = 560.dp) // Standard dialog width
-            .fillMaxWidth(0.9f), // Nice margins on phones
+            .fillMaxWidth(0.9f) // Nice margins on phones
+            .padding(vertical = 24.dp), // Lift from bottom bezel
         title = {
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -546,6 +547,7 @@ fun SettingsModal(
                                     )
                                 }
                             }
+                            Spacer(modifier = Modifier.height(80.dp))
                         }
                      }
 
