@@ -225,7 +225,7 @@ fun ImageColorPicker(
                         isFullscreen = false,
                         onToggleFullscreen = { isFullscreen = true }
                     )
-                } else {
+                } else if (!isImporting) {
                     Box(
                         modifier = Modifier
                             .fillMaxSize()
@@ -266,7 +266,7 @@ fun ImageColorPicker(
                         ) {
                             CircularProgressIndicator()
                             Text(
-                                text = "Optimizing Image...",
+                                text = "Importing...",
                                 style = MaterialTheme.typography.labelLarge,
                                 color = MaterialTheme.colorScheme.primary
                             )
