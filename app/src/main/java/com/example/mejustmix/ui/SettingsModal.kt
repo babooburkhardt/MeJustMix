@@ -469,6 +469,18 @@ fun SettingsModal(
                                         expanded = expandedSection == "connection",
                                         onHeaderClick = { expandedSection = if (expandedSection == "connection") "" else "connection" }
                                     )
+                                    
+                                    // Motor & FluidNC Settings (Step-based control)
+                                    MotorSettingsSection(
+                                        motorConfig = uiState.motorConfig,
+                                        useStepBasedGCode = uiState.useStepBasedGCode,
+                                        onMotorConfigChange = { settingsViewModel.updateMotorConfig(it) },
+                                        onToggleStepBasedGCode = { settingsViewModel.toggleStepBasedGCode(it) },
+                                        expanded = expandedSection == "motor",
+                                        onHeaderClick = { expandedSection = if (expandedSection == "motor") "" else "motor" },
+                                        onSyncToFluidNC = { settingsViewModel.syncMotorConfigToFluidNC() }
+                                    )
+                                    
                                     DispensingSection(
                                         uiState = uiState,
                                         mixViewModel = mixViewModel,

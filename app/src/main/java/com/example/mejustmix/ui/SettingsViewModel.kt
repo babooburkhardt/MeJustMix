@@ -8,11 +8,13 @@ import androidx.compose.ui.graphics.toArgb
 import androidx.lifecycle.AndroidViewModel
 import com.example.mejustmix.data.ConnectionType
 import com.example.mejustmix.data.MachineManager
+import com.example.mejustmix.data.MotorConfig
 import com.example.mejustmix.services.PigmentStrengths
 import com.example.mejustmix.services.KSColor
 import com.example.mejustmix.services.KSPigmentDatabase
 import com.example.mejustmix.services.KSCalibrationBundle
 import com.example.mejustmix.services.KubelkaMunkColorMixing
+import com.example.mejustmix.services.StepBasedGCodeGenerator
 import com.example.mejustmix.services.UnifiedBLEScanner
 import com.example.mejustmix.data.PrinterRepository
 import com.example.mejustmix.utils.PulseModeCalculator
@@ -122,7 +124,28 @@ data class SettingsUiState(
     val isTuning: Boolean = false,
     val tuningPumpIndex: Int = -1,
     val tuningPhaseOffset: Float = 0f, // Phase shift in degrees (-45 to +45)
-    val tuningPulseWidthDegrees: Float? = null // Override for taper width (5-45)
+    val tuningPulseWidthDegrees: Float? = null, // Override for taper width (5-45)
+    
+    // ==================== MOTOR & STEP-BASED CONTROL ====================
+    
+    /**
+     * Use step-based G-code instead of distance-based.
+     * When enabled, FluidNC is configured with $10X=1.0 (1 step = 1 unit)
+     * and all movements are specified in native motor steps.
+     */
+    val useStepBasedGCode: Boolean = true,
+    
+    /**
+     * Motor configuration for step calculations.
+     * Includes microstepping, gear ratio, speed limits, etc.
+     */
+    val motorConfig: MotorConfig = MotorConfig.DEFAULT,
+    
+    /**
+     * Whether FluidNC has been synchronized with current motor config.
+     * Reset to false when motor config changes, set to true after sync.
+     */
+    val fluidNCConfigSynced: Boolean = false
 )
 
 class SettingsViewModel(application: Application) : AndroidViewModel(application) {
@@ -1259,6 +1282,145 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
         
         saveSettings()
         showToast("${pump.name}: Rotation calibrated (${String.format(Locale.US, "%.0f", stepsPerPulse)} steps/pulse)")
+    }
+    
+    // ==================== MOTOR & STEP-BASED G-CODE METHODS ====================
+    
+    /**
+     * Toggle step-based G-code mode.
+     * When enabled, FluidNC is configured with $10X=1.0 (1 step = 1 unit).
+     */
+    fun toggleStepBasedGCode(enabled: Boolean) {
+        _uiState.update { 
+            it.copy(
+                useStepBasedGCode = enabled,
+                fluidNCConfigSynced = false  // Mark as needing sync
+            ) 
+        }
+        saveSettings()
+        
+        if (enabled) {
+            showToast("Step-based G-code enabled. Remember to sync with FluidNC!")
+        }
+    }
+    
+    /**
+     * Update motor configuration.
+     * This affects step calculations for all pumps.
+     */
+    fun updateMotorConfig(config: MotorConfig) {
+        _uiState.update { 
+            it.copy(
+                motorConfig = config,
+                fluidNCConfigSynced = false  // Mark as needing sync
+            ) 
+        }
+        saveSettings()
+    }
+    
+    /**
+     * Sync motor speed and acceleration to FluidNC.
+     * Sends $11X (max feed rate) and $12X (acceleration) commands for each axis via G-code.
+     * Note: $10X (steps/unit) must be set in the FluidNC config file manually.
+     */
+    fun syncMotorConfigToFluidNC() {
+        val state = _uiState.value
+        
+        viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO) {
+            try {
+                val motorConfig = state.motorConfig
+                val commands = mutableListOf<String>()
+                
+                // Generate $11X (max feed rate) and $12X (acceleration) for each axis
+                // We only send speed/accel - $10X must be configured in config file
+                state.pumps.forEach { pump ->
+                    val axisIndex = pump.axisIndex
+                    // $11X = max feed rate in steps/min
+                    commands.add("\$11$axisIndex=${motorConfig.maxFeedRateStepsPerMin}")
+                    // $12X = acceleration in steps/sec²
+                    commands.add("\$12$axisIndex=${motorConfig.accelerationStepsPerSec2}")
+                }
+                
+                // Send commands to FluidNC
+                printerRepository.sendGCodeCommands(commands)
+                
+                // Mark as synced
+                _uiState.update { it.copy(fluidNCConfigSynced = true) }
+                
+                kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
+                    showToast("Applied speed & acceleration to ${state.pumps.size} axes")
+                }
+            } catch (e: Exception) {
+                kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
+                    showToast("Sync failed: ${e.message}")
+                }
+            }
+        }
+    }
+    
+    /**
+     * Read current FluidNC configuration.
+     * Parses $ response to update local motor config.
+     * 
+     * Note: This is a placeholder - actual implementation requires
+     * parsing FluidNC's $ response which is complex.
+     */
+    fun readMotorConfigFromFluidNC() {
+        readFluidNCConfig()
+    }
+    
+    /**
+     * Alias for readMotorConfigFromFluidNC for UI compatibility.
+     */
+    fun readFluidNCConfig() {
+        viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO) {
+            try {
+                // Send $ command to query settings
+                // Note: This requires FluidNCService to capture and return the response
+                // For now, just show a toast indicating the feature
+                kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
+                    showToast("Reading FluidNC config... (check terminal for values)")
+                }
+                
+                // Send the query command
+                printerRepository.sendRaw(listOf("$"))
+                
+            } catch (e: Exception) {
+                kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
+                    showToast("Read failed: ${e.message}")
+                }
+            }
+        }
+    }
+    
+    /**
+     * Get the current motor configuration's steps per pulse.
+     * This is the authoritative source for step calculations when step-based mode is enabled.
+     */
+    fun getEffectiveStepsPerPulse(): Float {
+        return if (_uiState.value.useStepBasedGCode) {
+            _uiState.value.motorConfig.stepsPerPulse
+        } else {
+            // Fall back to pump's individual stepsPerPulse (legacy mode)
+            _uiState.value.pumps.firstOrNull()?.stepsPerPulse ?: 50f
+        }
+    }
+    
+    /**
+     * Calculate steps needed to dispense a given volume using motor config.
+     */
+    fun calculateStepsForVolume(volumeMl: Float, pumpIndex: Int): Float {
+        val pump = _uiState.value.pumps.getOrNull(pumpIndex) ?: return 0f
+        val motorConfig = _uiState.value.motorConfig
+        
+        if (pump.mlPerPulse <= 0f) return 0f
+        
+        val pulses = volumeMl / pump.mlPerPulse
+        return if (_uiState.value.useStepBasedGCode) {
+            pulses * motorConfig.stepsPerPulse
+        } else {
+            pulses * pump.stepsPerPulse
+        }
     }
 }
 
