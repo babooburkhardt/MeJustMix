@@ -120,6 +120,7 @@ private fun CameraContentMinimal(
     var rawColor by remember { mutableStateOf(Color.Gray) }
     var calibratedWhite by remember { mutableStateOf<Color?>(null) }
     var flashEnabled by remember { mutableStateOf(false) }
+    var shadowRemovalEnabled by remember { mutableStateOf(false) }
     
     // Internal EV offset: we use -10 as our "zero" for better color accuracy
     val evOffset = -10
@@ -156,7 +157,7 @@ private fun CameraContentMinimal(
     }
 
     // Setup camera on background thread
-    LaunchedEffect(previewView) {
+    LaunchedEffect(previewView, shadowRemovalEnabled) {
         val view = previewView ?: return@LaunchedEffect
         
         // Get camera provider on IO thread
@@ -171,7 +172,8 @@ private fun CameraContentMinimal(
             .setOutputImageFormat(ImageAnalysis.OUTPUT_IMAGE_FORMAT_RGBA_8888)
             .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
             .build()
-
+        
+        // Important: Update analyzer when shadow setting changes
         var lastAnalysisTime = 0L
         val analysisIntervalMs = 50L
 
@@ -179,7 +181,7 @@ private fun CameraContentMinimal(
             val currentTime = System.currentTimeMillis()
             try {
                 if (currentTime - lastAnalysisTime >= analysisIntervalMs) {
-                    rawColor = getCenterColor(image)
+                    rawColor = getCenterColor(image, shadowRemovalEnabled)
                     lastAnalysisTime = currentTime
                 }
             } catch (e: Exception) {
@@ -251,7 +253,7 @@ private fun CameraContentMinimal(
                 )
             }
 
-            // Top-right: Flash + Exposure - more compact
+    // Top-right: Flash + Exposure + Shadow Filter
             Row(
                 modifier = Modifier
                     .align(Alignment.TopEnd)
@@ -261,6 +263,19 @@ private fun CameraContentMinimal(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(4.dp)
             ) {
+                 // Shadow/Glare Filter Toggle
+                IconButton(
+                    onClick = { shadowRemovalEnabled = !shadowRemovalEnabled },
+                    modifier = Modifier.size(32.dp)
+                ) {
+                    Icon(
+                        Icons.Default.AutoFixHigh,
+                        contentDescription = "Shadow Filter",
+                        tint = if (shadowRemovalEnabled) MaterialTheme.colorScheme.primary else Color.White,
+                        modifier = Modifier.size(20.dp)
+                    )
+                }
+                
                 // Flash toggle
                 IconButton(
                     onClick = { flashEnabled = !flashEnabled },
@@ -274,13 +289,12 @@ private fun CameraContentMinimal(
                     )
                 }
 
-                // Exposure controls - show user-facing adjustment (0 = our -10 baseline)
+                // Exposure controls
                 if (exposureState?.isExposureCompensationSupported == true) {
                     val minEV = exposureState?.exposureCompensationRange?.lower ?: -12
                     val maxEV = exposureState?.exposureCompensationRange?.upper ?: 12
-                    // Calculate user-facing range relative to our offset
-                    val userMin = minEV - evOffset  // e.g., -12 - (-10) = -2
-                    val userMax = maxEV - evOffset  // e.g., 12 - (-10) = 22
+                    val userMin = minEV - evOffset
+                    val userMax = maxEV - evOffset
                     
                     IconButton(
                         onClick = { if (exposureAdjustment > userMin) exposureAdjustment-- },
@@ -316,7 +330,7 @@ private fun CameraContentMinimal(
                 }
             }
 
-            // Bottom hint - smaller
+            // Bottom hint
             Box(
                 modifier = Modifier
                     .align(Alignment.BottomCenter)
@@ -325,7 +339,11 @@ private fun CameraContentMinimal(
                     .padding(horizontal = 10.dp, vertical = 3.dp)
             ) {
                 Text(
-                    text = if (!isCalibrated) "Optional: Set white for better accuracy" else "Point at color",
+                    text = when {
+                        !isCalibrated -> "Optional: Tap 'Set White' to calibrate"
+                        shadowRemovalEnabled -> "Scanning middle tones (Shadows/Glare ignored)"
+                        else -> "Point at color"
+                    },
                     color = Color.White,
                     fontSize = 11.sp
                 )
@@ -334,13 +352,13 @@ private fun CameraContentMinimal(
 
         Spacer(modifier = Modifier.height(12.dp))
 
-        // Bottom action row: Calibrate + Color pick - more compact
+        // Bottom action row: Calibrate + Color pick
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(8.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            // Calibrate white button (optional)
+            // Calibrate white button
             OutlinedButton(
                 onClick = { calibratedWhite = rawColor },
                 modifier = Modifier
@@ -366,7 +384,7 @@ private fun CameraContentMinimal(
                 )
             }
 
-            // Color pick button - always enabled
+            // Color pick button
             Button(
                 onClick = {
                     cameraControl?.enableTorch(false)
@@ -378,10 +396,7 @@ private fun CameraContentMinimal(
                 contentPadding = PaddingValues(horizontal = 12.dp, vertical = 0.dp),
                 colors = ButtonDefaults.buttonColors(
                     containerColor = finalColor,
-                    contentColor = if (finalColor.luminance() > 0.5f) 
-                        Color.Black 
-                    else 
-                        Color.White
+                    contentColor = if (finalColor.luminance() > 0.5f) Color.Black else Color.White
                 )
             ) {
                 Text(
@@ -401,7 +416,7 @@ private fun Color.luminance(): Float {
     return (0.299f * red + 0.587f * green + 0.114f * blue)
 }
 
-private fun getCenterColor(image: ImageProxy): Color {
+private fun getCenterColor(image: ImageProxy, removeShadows: Boolean): Color {
     val planes = image.planes
     val buffer = planes[0].buffer
     val width = image.width
@@ -412,12 +427,9 @@ private fun getCenterColor(image: ImageProxy): Color {
     val centerX = width / 2
     val centerY = height / 2
     
-    var rSum = 0L
-    var gSum = 0L
-    var bSum = 0L
-    var count = 0
+    val pixels = mutableListOf<Int>()
     
-    val sampleSize = 15
+    val sampleSize = 25 // Increased sample size for better statistical filtering
     for (dy in -sampleSize / 2 until sampleSize / 2) {
         for (dx in -sampleSize / 2 until sampleSize / 2) {
             val x = (centerX + dx).coerceIn(0, width - 1)
@@ -431,18 +443,50 @@ private fun getCenterColor(image: ImageProxy): Color {
                 val g = buffer.get().toInt() and 0xFF
                 val b = buffer.get().toInt() and 0xFF
                 
-                rSum += r
-                gSum += g
-                bSum += b
-                count++
+                // Pack into ARGB Int for easier handling
+                val color = (0xFF shl 24) or (r shl 16) or (g shl 8) or b
+                pixels.add(color)
+
             } catch (e: Exception) {
                 continue
             }
         }
     }
     
-    if (count == 0) return Color.Gray
+    if (pixels.isEmpty()) return Color.Gray
     
+    val filteredPixels = if (removeShadows && pixels.size > 10) {
+        // Sort by luminance (brightness)
+        // We use the standard Rec. 709 luminance formula estimate: R*0.21 + G*0.72 + B*0.07 (fast approx)
+        pixels.sortBy { 
+             val r = (it shr 16) and 0xFF
+             val g = (it shr 8) and 0xFF
+             val b = it and 0xFF
+             r + g + b // Simple sum is enough for sorting brightness
+        }
+        
+        // Discard bottom 25% (shadows) and top 25% (glare/highlights)
+        // Keep the middle 50% (Interquartile Range)
+        val start = pixels.size / 4
+        val end = pixels.size * 3 / 4
+        pixels.subList(start, end)
+    } else {
+        pixels
+    }
+    
+    if (filteredPixels.isEmpty()) return Color.Gray
+
+    var rSum = 0L
+    var gSum = 0L
+    var bSum = 0L
+    
+    for (color in filteredPixels) {
+        rSum += (color shr 16) and 0xFF
+        gSum += (color shr 8) and 0xFF
+        bSum += color and 0xFF
+    }
+    
+    val count = filteredPixels.size
     val avgR = (rSum / count).toInt()
     val avgG = (gSum / count).toInt()
     val avgB = (bSum / count).toInt()

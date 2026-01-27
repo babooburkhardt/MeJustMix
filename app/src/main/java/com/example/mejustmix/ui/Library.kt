@@ -110,7 +110,7 @@ fun LibraryItemSkeleton() {
     Box(
         modifier = Modifier
             .size(60.dp)
-            .clip(RoundedCornerShape(16.dp))
+            .clip(RoundedCornerShape(20.dp))
             .shimmerEffect()
     )
 }
@@ -571,7 +571,7 @@ fun FolderPaletteDialog(
             modifier = Modifier
                 .fillMaxWidth()
                 .heightIn(min = 400.dp, max = screenHeight * 0.8f),
-            shape = RoundedCornerShape(28.dp),
+            shape = RoundedCornerShape(24.dp),
             colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
             elevation = CardDefaults.cardElevation(8.dp)
         ) {
@@ -657,7 +657,7 @@ fun PaletteDashboardView(
             modifier = Modifier
                 .weight(1.2f) 
                 .fillMaxWidth()
-                .clip(RoundedCornerShape(32.dp))
+                .clip(RoundedCornerShape(24.dp))
                 .background(animatedSurfaceColor)
                 .clickable { /* Consumes clicks */ },
             contentAlignment = Alignment.Center
@@ -807,9 +807,9 @@ fun ColorTile(
                     scaleX = scale
                     scaleY = scale
                 }
-                .clip(RoundedCornerShape(16.dp))
+                .clip(RoundedCornerShape(20.dp))
                 .background(color)
-                .border(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha=0.2f), RoundedCornerShape(16.dp))
+                .border(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha=0.2f), RoundedCornerShape(20.dp))
                 .combinedClickable(
                     onClick = {
                         onClick()
@@ -864,8 +864,8 @@ fun PhotoTile(
                     scaleX = scale
                     scaleY = scale
                 }
-                .clip(RoundedCornerShape(16.dp))
-                .border(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha=0.2f), RoundedCornerShape(16.dp))
+                .clip(RoundedCornerShape(20.dp))
+                .border(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha=0.2f), RoundedCornerShape(20.dp))
                 .combinedClickable(
                     onClick = {
                         onClick()
