@@ -591,12 +591,40 @@ class MixViewModel @JvmOverloads constructor(
             val photosDir = java.io.File(context.filesDir, "saved_photos")
             if (!photosDir.exists()) photosDir.mkdirs()
 
-            val fileName = "photo_${UUID.randomUUID()}.jpg"
+            val fileName = "photo_${UUID.randomUUID()}.png" // PNG for lossless accuracy
             val destFile = java.io.File(photosDir, fileName)
 
+            // TRANSCODING FLOW: Decode input -> Compress as PNG -> Save
+            // PNG is lossless, ensuring the saved color values exactly match the source.
+            // It is still faster to decode than HEIC for future uses.
             context.contentResolver.openInputStream(sourceUri)?.use { input ->
-                java.io.FileOutputStream(destFile).use { output ->
-                    input.copyTo(output)
+                val originalBitmap = android.graphics.BitmapFactory.decodeStream(input)
+                if (originalBitmap != null) {
+                    // Downscale to max 2600px (~5MP) to save library space
+                    val maxDimension = 2600
+                    val bitmap = if (originalBitmap.width > maxDimension || originalBitmap.height > maxDimension) {
+                        val scale = maxDimension.toFloat() / kotlin.math.max(originalBitmap.width, originalBitmap.height)
+                        val newWidth = (originalBitmap.width * scale).toInt()
+                        val newHeight = (originalBitmap.height * scale).toInt()
+                        val scaled = android.graphics.Bitmap.createScaledBitmap(originalBitmap, newWidth, newHeight, true)
+                        if (scaled != originalBitmap) originalBitmap.recycle()
+                        scaled
+                    } else {
+                        originalBitmap
+                    }
+                
+                    java.io.FileOutputStream(destFile).use { output ->
+                        bitmap.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, output)
+                    }
+                    if (bitmap != originalBitmap) bitmap.recycle()
+                    if (bitmap == originalBitmap) bitmap.recycle()
+                } else {
+                    // Fallback for non-bitmap files
+                    context.contentResolver.openInputStream(sourceUri)?.use { reInput ->
+                         java.io.FileOutputStream(destFile).use { output ->
+                            reInput.copyTo(output)
+                         }
+                    }
                 }
             }
             destFile

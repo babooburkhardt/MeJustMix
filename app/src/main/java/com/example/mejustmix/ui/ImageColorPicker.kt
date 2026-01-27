@@ -64,6 +64,7 @@ import java.io.FileOutputStream
 import kotlin.math.min
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.launch
 import android.util.LruCache
 
 @Composable
@@ -100,17 +101,39 @@ fun ImageColorPicker(
     var isDragOver by remember { mutableStateOf(false) }
     var isFullscreen by remember { mutableStateOf(false) }
 
+    var isImporting by remember { mutableStateOf(false) }
+
+    val scope = rememberCoroutineScope()
+    
+    // Helper to process URIs in background
+    fun processAndAddUris(newUris: List<Uri>) {
+        if (newUris.isEmpty()) return
+        
+        isImporting = true
+        scope.launch(Dispatchers.IO) {
+            val processedUris = newUris.map { uri ->
+                // Transcode detailed HEIC/etc to cached JPG immediately
+                transcodeToJpeg(context, uri) ?: uri
+            }
+            
+            withContext(Dispatchers.Main) {
+                isImporting = false
+                val newUniqueUris = processedUris.filter { it !in images }
+                if (newUniqueUris.isNotEmpty()) {
+                    val updatedList = images + newUniqueUris
+                    onImagesChanged(updatedList)
+                    if (selectedImageUri == null) {
+                        selectedImageUri = newUniqueUris.firstOrNull()
+                    }
+                }
+            }
+        }
+    }
+
     val launcher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.GetMultipleContents(),
     ) { uris ->
-        if (uris.isNotEmpty()) {
-            val newUniqueUris = uris.filter { it !in images }
-            val updatedList = images + newUniqueUris
-            onImagesChanged(updatedList)
-            if (selectedImageUri == null) {
-                selectedImageUri = updatedList.firstOrNull()
-            }
-        }
+        processAndAddUris(uris)
     }
 
     val dropTarget = remember(images) {
@@ -129,19 +152,11 @@ fun ImageColorPicker(
                 activity?.requestDragAndDropPermissions(dragEvent)?.let { permissions ->
                     val uris = (0 until dragEvent.clipData.itemCount).mapNotNull { i ->
                         val item = dragEvent.clipData.getItemAt(i)
-                        item.uri?.let { uri ->
-                            copyUriToCache(context, uri)
-                        }
+                        item.uri
                     }
-
-                    val newUniqueUris = uris.filter { it !in images }
-                    if (newUniqueUris.isNotEmpty()) {
-                        val updatedList = images + newUniqueUris
-                        onImagesChanged(updatedList)
-                        if (selectedImageUri == null) {
-                            selectedImageUri = newUniqueUris.firstOrNull()
-                        }
-                    }
+                    
+                    // Process URIs using the same pipeline (transcoding happens there)
+                    processAndAddUris(uris)
 
                     permissions.release()
                 }
@@ -235,6 +250,28 @@ fun ImageColorPicker(
                         Modifier
                             .fillMaxSize()
                             .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.2f)))
+                }
+                
+                // Processing Overlay
+                if (isImporting) {
+                     Box(
+                        Modifier
+                            .fillMaxSize()
+                            .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.8f)),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Column(
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.spacedBy(16.dp)
+                        ) {
+                            CircularProgressIndicator()
+                            Text(
+                                text = "Optimizing Image...",
+                                style = MaterialTheme.typography.labelLarge,
+                                color = MaterialTheme.colorScheme.primary
+                            )
+                        }
+                    }
                 }
             }
         }
@@ -439,16 +476,42 @@ private fun pickColor(
     onColorPicked(Color(r, g, b, 255))
 }
 
-private fun copyUriToCache(context: Context, sourceUri: Uri): Uri? {
+private fun transcodeToJpeg(context: Context, sourceUri: Uri): Uri? {
     return try {
+        // Fast path: if already in cache and ends with .jpg, might reuse (optional, but skipping for safety)
+        
         val inputStream = context.contentResolver.openInputStream(sourceUri) ?: return null
-        val fileName = "dropped_image_${System.currentTimeMillis()}_${(0..1000).random()}.jpg"
+        val fileName = "cached_image_${System.currentTimeMillis()}_${(0..1000).random()}.png"
         val file = File(context.cacheDir, fileName)
 
+        // Decode to Bitmap (handles HEIC) -> Compress to PNG
         inputStream.use { input ->
-            FileOutputStream(file).use { output ->
-                input.copyTo(output)
-            }
+             // Using BitmapFactory automatically handles HEIC if supported by OS (Android P+)
+             val originalBitmap = BitmapFactory.decodeStream(input)
+             if (originalBitmap != null) {
+                 // Downscale if too large (Max 2600px on longest side ~ 5MP)
+                 // Increased from 2048px (3MP) to 2600px (5MP) per user request
+                 val maxDimension = 2600
+                 val bitmap = if (originalBitmap.width > maxDimension || originalBitmap.height > maxDimension) {
+                     val scale = maxDimension.toFloat() / kotlin.math.max(originalBitmap.width, originalBitmap.height)
+                     val newWidth = (originalBitmap.width * scale).toInt()
+                     val newHeight = (originalBitmap.height * scale).toInt()
+                     val scaled = Bitmap.createScaledBitmap(originalBitmap, newWidth, newHeight, true)
+                     if (scaled != originalBitmap) originalBitmap.recycle()
+                     scaled
+                 } else {
+                     originalBitmap
+                 }
+
+                 FileOutputStream(file).use { output ->
+                     // Use PNG for lossless quality during color picking
+                     bitmap.compress(Bitmap.CompressFormat.PNG, 100, output)
+                 }
+                 if (bitmap != originalBitmap) bitmap.recycle() // Recycle scaled if different
+                 if (bitmap == originalBitmap) bitmap.recycle() // Recycle original if used
+             } else {
+                 return null // Failed to decode (not an image?)
+             }
         }
         Uri.fromFile(file)
     } catch (e: Exception) {
