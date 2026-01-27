@@ -11,6 +11,8 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.gestures.rememberTransformableState
+import androidx.compose.foundation.gestures.transformable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
@@ -32,25 +34,28 @@ import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onGloballyPositioned
-import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.toSize
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
-import androidx.compose.ui.graphics.toArgb
 import com.example.mejustmix.services.KSColor
 import com.example.mejustmix.utils.CalibrationTarget
 import com.example.mejustmix.utils.CameraCalibrationUtils
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 import android.graphics.Rect as AndroidRect
+import kotlin.math.roundToInt
+
+import androidx.compose.foundation.gestures.detectTransformGestures
+import kotlinx.coroutines.withContext
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -64,13 +69,22 @@ fun AutoCalibrationCameraDialog(
     // States
     var currentBitmap by remember { mutableStateOf<Bitmap?>(null) }
     
+    // Viewport State
+    var containerSize by remember { mutableStateOf(Size.Zero) }
+    
     // Sampling State
-    var loupePosition by remember { mutableStateOf(Offset(200f, 200f)) } // Screen coords
-    var imageRect by remember { mutableStateOf(Size.Zero) } // Size of image on screen
-    var imageOffset by remember { mutableStateOf(Offset.Zero) } // Offset of image on screen
+    // We'll init this to center once we know container size
+    var loupePosition by remember { mutableStateOf(Offset.Unspecified) } 
+    
+    // Image Transform State
+    var scale by remember { mutableStateOf(1f) }
+    var offset by remember { mutableStateOf(Offset.Zero) }
+    
+    // Calculated Image Placement (Fill/Fit logic)
+    var imageRect by remember { mutableStateOf(Size.Zero) } // Scaled size (before zoom)
+    var imageTopLeft by remember { mutableStateOf(Offset.Zero) } // Offset (before pan)
     
     // Calibration Data
-    // Store sampled RGB integers. null = not set.
     val samples = remember { mutableStateMapOf<CalibrationTarget, Int>() }
     var whiteRefColor by remember { mutableStateOf<Int?>(null) }
     
@@ -79,7 +93,11 @@ fun AutoCalibrationCameraDialog(
     
     // Camera/Gallery Launchers
     val cameraLauncher = rememberLauncherForActivityResult(ActivityResultContracts.TakePicturePreview()) { bitmap ->
-        if (bitmap != null) currentBitmap = bitmap
+        if (bitmap != null) {
+            currentBitmap = bitmap
+            scale = 1f
+            offset = Offset.Zero
+        }
     }
     
     val galleryLauncher = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
@@ -89,6 +107,10 @@ fun AutoCalibrationCameraDialog(
                      val stream = context.contentResolver.openInputStream(uri)
                      val bmp = BitmapFactory.decodeStream(stream)
                      currentBitmap = bmp
+                     withContext(Dispatchers.Main) {
+                         scale = 1f
+                         offset = Offset.Zero
+                     }
                 } catch (e: Exception) {
                     // Handle error
                 }
@@ -96,44 +118,61 @@ fun AutoCalibrationCameraDialog(
         }
     }
     
+    // Initialize Loupe Center
+    LaunchedEffect(containerSize) {
+        if (containerSize != Size.Zero && loupePosition == Offset.Unspecified) {
+            loupePosition = Offset(containerSize.width / 2f, containerSize.height / 2f)
+        }
+    }
+    
     // Color Sampling Logic
     fun sampleCurrentPosition() {
         val bmp = currentBitmap ?: return
+        if (loupePosition == Offset.Unspecified || containerSize == Size.Zero) return
+
+        // Pivot is center of container
+        val pivotX = containerSize.width / 2f
+        val pivotY = containerSize.height / 2f
+
+        // 1. Untransform Screen (Loupe) Point to Box Point (Reverse graphicsLayer)
+        // Screen = (Box - Pivot) * Scale + Pivot + Offset
+        // Box - Pivot = (Screen - Pivot - Offset) / Scale
+        // Box = ((Screen - Pivot - Offset) / Scale) + Pivot
         
-        // Map screen coords (loupePosition) to Bitmap coords
-        // imageOffset is top-left of image relative to the Box
-        // imageRect is size of image on screen
+        val boxX = ((loupePosition.x - pivotX - offset.x) / scale) + pivotX
+        val boxY = ((loupePosition.y - pivotY - offset.y) / scale) + pivotY
         
-        val relX = loupePosition.x - imageOffset.x
-        val relY = loupePosition.y - imageOffset.y
+        // 2. Untransform Box Point to Bitmap Point (Reverse ContentScale.Fit)
+        // Box = ImageTopLeft + (Bitmap * FitScale)
+        // Bitmap = (Box - ImageTopLeft) / FitScale
         
-        if (relX < 0 || relY < 0 || relX > imageRect.width || relY > imageRect.height) {
+        val fitScaleX = imageRect.width / bmp.width.toFloat()
+        if (fitScaleX == 0f) return
+        
+        val relX = (boxX - imageTopLeft.x) / fitScaleX
+        val relY = (boxY - imageTopLeft.y) / fitScaleX
+        
+        // Check bounds (in Bitmap coordinates)
+        if (relX < 0 || relY < 0 || relX > bmp.width || relY > bmp.height) {
             currentSampledColor = Color.Transparent
             return
         }
         
-        // Scale to bitmap
-        val scaleX = bmp.width / imageRect.width
-        val scaleY = bmp.height / imageRect.height
-        
-        val bmpX = (relX * scaleX).toInt()
-        val bmpY = (relY * scaleY).toInt()
-        
-        // Sample 30px box around point (scaled)
-        val boxSize = (30 * scaleX).toInt().coerceAtLeast(1)
+        // Sample area
+        val sampleSizePx = 10 
         val rect = AndroidRect(
-            bmpX - boxSize/2, 
-            bmpY - boxSize/2, 
-            bmpX + boxSize/2, 
-            bmpY + boxSize/2
+            (relX - sampleSizePx).toInt(), 
+            (relY - sampleSizePx).toInt(), 
+            (relX + sampleSizePx).toInt(), 
+            (relY + sampleSizePx).toInt()
         )
         
         val colorInt = CameraCalibrationUtils.sampleAverageColor(bmp, rect)
         currentSampledColor = Color(colorInt)
     }
-    
-    // Auto-sample when moving loupe
-    LaunchedEffect(loupePosition, currentBitmap, imageRect) {
+
+    // Auto-sample when anything changes
+    LaunchedEffect(loupePosition, currentBitmap, scale, offset, imageRect, containerSize) {
         sampleCurrentPosition()
     }
 
@@ -180,22 +219,41 @@ fun AutoCalibrationCameraDialog(
                         .clip(RoundedCornerShape(12.dp))
                         .background(Color.DarkGray)
                         .border(1.dp, Color.Gray, RoundedCornerShape(12.dp))
-                        .pointerInput(currentBitmap) {
-                            detectDragGestures { change, dragAmount ->
-                                change.consume()
-                                loupePosition += dragAmount
+                        .onGloballyPositioned { coords ->
+                            containerSize = Size(coords.size.width.toFloat(), coords.size.height.toFloat())
+                        }
+                        // Handle Loupe Dragging Layer
+                        .pointerInput(Unit) {
+                            detectTransformGestures { _, pan, _, _ ->
+                                // Only accumulate pan for the loupe position
+                                if (loupePosition != Offset.Unspecified) {
+                                    loupePosition += pan
+                                }
                             }
                         }
                 ) {
                     if (currentBitmap != null) {
-                        ImageWithLoupe(
+                        ImageWithTransform(
                             bitmap = currentBitmap!!,
-                            loupePos = loupePosition,
-                            onLayout = { offset, size ->
-                                imageOffset = offset
-                                imageRect = size
+                            scale = 1f,
+                            offset = Offset.Zero,
+                            onLayout = { pos, rect ->
+                                imageTopLeft = pos
+                                imageRect = rect
                             }
                         )
+                        
+                        // Loupe Layer
+                        if (loupePosition != Offset.Unspecified) {
+                            LoupeCursor(
+                                position = loupePosition,
+                                color = currentSampledColor,
+                                onDrag = { dragAmount ->
+                                    loupePosition += dragAmount
+                                }
+                            )
+                        }
+                        
                     } else {
                         // Empty State
                         Column(
@@ -203,17 +261,16 @@ fun AutoCalibrationCameraDialog(
                             horizontalAlignment = Alignment.CenterHorizontally,
                             verticalArrangement = Arrangement.Center
                         ) {
-                            Text("Take a photo of your test sheet", color = Color.LightGray)
+                            Icon(Icons.Default.CameraAlt, null, modifier = Modifier.size(48.dp), tint = Color.LightGray)
                             Spacer(Modifier.height(16.dp))
+                            Text("Take a CLOSE-UP photo", color = Color.White, fontWeight = FontWeight.Bold)
+                            Text("Ensure blobs are large and clear", color = Color.LightGray)
+                            Spacer(Modifier.height(24.dp))
                             Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
                                 Button(onClick = { cameraLauncher.launch() }) {
-                                    Icon(Icons.Default.CameraAlt, null)
-                                    Spacer(Modifier.width(8.dp))
-                                    Text("Camera")
+                                    Text("Open Camera")
                                 }
                                 OutlinedButton(onClick = { galleryLauncher.launch("image/*") }) {
-                                    Icon(Icons.Default.Image, null)
-                                    Spacer(Modifier.width(8.dp))
                                     Text("Gallery")
                                 }
                             }
@@ -248,6 +305,9 @@ fun AutoCalibrationCameraDialog(
                         
                         Text("2. Sample Pigments", style = MaterialTheme.typography.labelSmall)
                         
+                        val instructionsText = if (whiteRefColor == null) "Set White Ref above to enable sampling" else "Drag Loupe & Tap Below"
+                        Text(instructionsText, color = if(whiteRefColor == null) Color.Red else Color.Gray, style = MaterialTheme.typography.bodySmall)
+
                         // Target Grid/List
                         LazyRow(
                             horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -290,18 +350,6 @@ fun AutoCalibrationCameraDialog(
                                 }
                             }
                         }
-                        
-                        // Current Loupe Preview
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Text("Loupe Color:")
-                            Spacer(Modifier.width(8.dp))
-                            Box(
-                                modifier = Modifier
-                                    .size(32.dp)
-                                    .background(currentSampledColor, CircleShape)
-                                    .border(1.dp, Color.Gray, CircleShape)
-                            )
-                        }
                     }
                 }
             }
@@ -310,64 +358,112 @@ fun AutoCalibrationCameraDialog(
 }
 
 @Composable
-fun ImageWithLoupe(
+fun ImageWithTransform(
     bitmap: Bitmap,
-    loupePos: Offset,
+    scale: Float,
+    offset: Offset,
     onLayout: (Offset, Size) -> Unit
 ) {
     BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
         val imageRatio = bitmap.width.toFloat() / bitmap.height.toFloat()
         val boxRatio = maxWidth / maxHeight
         
-        // Calculate fit
+        // Calculate fit center logic manually to report correct bounds to parent
+        val density = LocalDensity.current
         var displayWidth = 0f
         var displayHeight = 0f
-        var offsetX = 0f
-        var offsetY = 0f
-        
-        val density = LocalDensity.current
+        var startX = 0f
+        var startY = 0f
         
         if (imageRatio > boxRatio) {
             // Limited by width
             displayWidth = maxWidth.value * density.density
             displayHeight = displayWidth / imageRatio
-            offsetY = (maxHeight.value * density.density - displayHeight) / 2f
+            startY = (maxHeight.value * density.density - displayHeight) / 2f
         } else {
             // Limited by height
             displayHeight = maxHeight.value * density.density
             displayWidth = displayHeight * imageRatio
-            offsetX = (maxWidth.value * density.density - displayWidth) / 2f
+            startX = (maxWidth.value * density.density - displayWidth) / 2f
         }
 
-        // Report layout
         SideEffect {
-            onLayout(Offset(offsetX, offsetY), Size(displayWidth, displayHeight))
+            onLayout(Offset(startX, startY), Size(displayWidth, displayHeight))
         }
 
         Image(
             bitmap = bitmap.asImageBitmap(),
             contentDescription = "Calibration Image",
-            contentScale = ContentScale.Fit,
-            modifier = Modifier.fillMaxSize()
+            contentScale = ContentScale.Fit, // This handles the initial fit
+            modifier = Modifier
+                .fillMaxSize()
+                .graphicsLayer(
+                    scaleX = scale,
+                    scaleY = scale,
+                    translationX = offset.x,
+                    translationY = offset.y
+                )
         )
-        
-        // Draw Loupe Cursor
+    }
+}
+
+@Composable
+fun LoupeCursor(
+    position: Offset,
+    color: Color,
+    onDrag: (Offset) -> Unit
+) {
+    val density = LocalDensity.current
+    val sizeDp = 120.dp
+    val radiusPx = with(density) { (sizeDp / 2).toPx() }
+    
+    Box(
+        modifier = Modifier
+            .offset { 
+                IntOffset(
+                    (position.x - radiusPx).roundToInt(), 
+                    (position.y - radiusPx).roundToInt()
+                ) 
+            }
+            .size(sizeDp)
+            .pointerInput(Unit) {
+                detectDragGestures { change, dragAmount ->
+                    change.consume()
+                    onDrag(dragAmount)
+                }
+            },
+        contentAlignment = Alignment.Center
+    ) {
         Canvas(modifier = Modifier.fillMaxSize()) {
-            drawCircle(
-                color = Color.White,
-                radius = 40f,
-                center = loupePos,
-                style = Stroke(width = 4f)
-            )
+            // Center of Canvas
+            val cx = size.width / 2f
+            val cy = size.height / 2f
+            
+            // Outer Ring
             drawCircle(
                 color = Color.Black,
-                radius = 41f,
-                center = loupePos,
-                style = Stroke(width = 1f)
+                radius = 32.dp.toPx(), // Visual size
+                center = Offset(cx, cy),
+                style = Stroke(width = 8f)
             )
+            drawCircle(
+                color = Color.White,
+                radius = 32.dp.toPx(),
+                center = Offset(cx, cy),
+                style = Stroke(width = 6f)
+            )
+            
             // Crosshair
-            drawLine(Color.White, Offset(loupePos.x - 10, loupePos.y), Offset(loupePos.x + 10, loupePos.y), 2f)
-            drawLine(Color.White, Offset(loupePos.x, loupePos.y - 10), Offset(loupePos.x, loupePos.y + 10), 2f)
+            drawLine(Color.White, Offset(cx - 20f, cy), Offset(cx + 20f, cy), 4f)
+            drawLine(Color.White, Offset(cx, cy - 20f), Offset(cx, cy + 20f), 4f)
+            
+            // Sampled Color Preview Ring (Inside)
+            drawCircle(
+                 color = color,
+                 radius = 24.dp.toPx(),
+                 center = Offset(cx, cy),
+                 style = Stroke(width = 10f)
+            )
         }
     }
 }
