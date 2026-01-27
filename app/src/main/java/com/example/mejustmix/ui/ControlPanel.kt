@@ -1,24 +1,29 @@
 package com.example.mejustmix.ui
 
-import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
@@ -28,6 +33,7 @@ import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -95,46 +101,7 @@ fun ControlPanel(
         verticalArrangement = Arrangement.spacedBy(20.dp)
     ) {
         val isOutOfGamut by mixViewModel.isOutOfGamut.collectAsState()
-
-        // Save success feedback
-        AnimatedVisibility(
-            visible = showSaveSuccess,
-            enter = slideInVertically { -it } + fadeIn(),
-            exit = slideOutVertically { -it } + fadeOut()
-        ) {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .background(
-                        MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.3f),
-                        RoundedCornerShape(12.dp)
-                    )
-                    .border(
-                        1.dp,
-                        MaterialTheme.colorScheme.primary.copy(alpha = 0.5f),
-                        RoundedCornerShape(12.dp)
-                    )
-                    .padding(12.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Icon(
-                    imageVector = Icons.Default.Check,
-                    contentDescription = "Success",
-                    tint = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier
-                        .padding(end = 12.dp)
-                        .size(24.dp)
-                )
-                Column {
-                    Text(
-                        text = "Saved to $savedFolderName!",
-                        style = MaterialTheme.typography.bodyMedium,
-                        fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.primary
-                    )
-                }
-            }
-        }
+        val currentColor by mixViewModel.color.collectAsState()
 
         if (isOutOfGamut && settingsState.showRealityCheck) {
             Row(
@@ -160,18 +127,57 @@ fun ControlPanel(
             }
         }
 
-        OutlinedButton(
-            onClick = { showSaveDialog = true },
-            modifier = Modifier.fillMaxWidth().height(56.dp),
-            shape = RoundedCornerShape(16.dp),
+        // Animated Smart Save Button
+        // Replaces both the old button and the success banner
+        Surface(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(56.dp)
+                .clip(RoundedCornerShape(24.dp)) // Matched to new VisualizerCard style
+                .clickable { if (!showSaveSuccess) showSaveDialog = true },
+            color = if (showSaveSuccess) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surface,
             border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.2f)),
-            colors = ButtonDefaults.outlinedButtonColors(
-                containerColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.05f)
-            )
+            shape = RoundedCornerShape(24.dp)
         ) {
-            Icon(Icons.Outlined.Save, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
-            Spacer(modifier = Modifier.size(8.dp))
-            Text("Save Color to Library", color = MaterialTheme.colorScheme.primary, fontSize = 16.sp, fontWeight = FontWeight.Bold)
+            androidx.compose.animation.AnimatedContent(
+                targetState = showSaveSuccess,
+                transitionSpec = {
+                    (fadeIn() + slideInVertically { it / 2 }).togetherWith(fadeOut() + slideOutVertically { -it / 2 })
+                },
+                label = "SaveButtonAnim"
+            ) { success ->
+                Row(
+                    modifier = Modifier.fillMaxSize(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.Center
+                ) {
+                    if (success) {
+                        Icon(Icons.Default.Check, null, tint = MaterialTheme.colorScheme.primary)
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            "Saved to $savedFolderName!", 
+                            color = MaterialTheme.colorScheme.primary, 
+                            fontWeight = FontWeight.Bold
+                        )
+                    } else {
+                        // Color Preview Dot
+                        Box(
+                            modifier = Modifier
+                                .size(12.dp)
+                                .background(currentColor, androidx.compose.foundation.shape.CircleShape)
+                                .border(1.dp, Color.Gray.copy(alpha=0.5f), androidx.compose.foundation.shape.CircleShape)
+                        )
+                        Spacer(modifier = Modifier.width(12.dp))
+                        Icon(Icons.Outlined.Save, null, tint = MaterialTheme.colorScheme.primary)
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            "Save to Library", 
+                            color = MaterialTheme.colorScheme.primary, 
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+                }
+            }
         }
 
         val paintRatio = 1f - manualTransparency
