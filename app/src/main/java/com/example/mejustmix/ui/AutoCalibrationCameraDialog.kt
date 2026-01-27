@@ -103,16 +103,14 @@ fun AutoCalibrationCameraDialog(
     val galleryLauncher = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
         if (uri != null) {
              scope.launch(Dispatchers.IO) {
-                try {
-                     val stream = context.contentResolver.openInputStream(uri)
-                     val bmp = BitmapFactory.decodeStream(stream)
-                     currentBitmap = bmp
-                     withContext(Dispatchers.Main) {
-                         scale = 1f
-                         offset = Offset.Zero
-                     }
-                } catch (e: Exception) {
-                    // Handle error
+                // Use safe optimized loader
+                val bmp = loadOptimizedBitmap(context, uri)
+                if (bmp != null) {
+                    withContext(Dispatchers.Main) {
+                        currentBitmap = bmp
+                        scale = 1f
+                        offset = Offset.Zero
+                    }
                 }
              }
         }
