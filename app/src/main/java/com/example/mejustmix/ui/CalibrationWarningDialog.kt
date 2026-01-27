@@ -124,6 +124,38 @@ fun CalibrationWarningDialog(
                     }
                 }
                 
+                // Screen Calibration Warning
+                Card(
+                    colors = CardDefaults.cardColors(
+                        containerColor = MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.3f)
+                    )
+                ) {
+                    Column(
+                        modifier = Modifier.padding(12.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                         Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(
+                                Icons.Default.Warning,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.error,
+                                modifier = Modifier.size(20.dp)
+                            )
+                            Spacer(Modifier.width(8.dp))
+                            Text(
+                                text = "Screen vs. Reality",
+                                style = MaterialTheme.typography.labelLarge,
+                                color = MaterialTheme.colorScheme.error,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                        Text(
+                            text = "Unless you have a professionally calibrated screen, the preview will never match perfectly. Even high-end phones and tablets tend to artificially brighten colors for 'pop'. Trust the math over your screen.",
+                            style = MaterialTheme.typography.bodySmall
+                        )
+                    }
+                }
+                
                 HorizontalDivider()
                 
                 // Acknowledgment checkbox
