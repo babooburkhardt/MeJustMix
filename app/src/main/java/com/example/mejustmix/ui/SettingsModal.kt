@@ -93,6 +93,7 @@ fun SettingsModal(
     
     var showRetractionCalibrator by rememberSaveable { mutableStateOf(false) }
     var showKubelkaMunkSettings by rememberSaveable { mutableStateOf(false) }
+    var showAutoCalibrationDialog by rememberSaveable { mutableStateOf(false) }
     
     // Pulse Mode States
     var showPulseCalibrationForIndex by rememberSaveable { mutableStateOf<Int?>(null) }
@@ -283,6 +284,13 @@ fun SettingsModal(
             onDismissRequest = { showKubelkaMunkSettings = false },
             mixViewModel = mixViewModel,
             onImportRequest = { ksImportLauncher.launch(arrayOf("application/json")) }
+        )
+    }
+
+    if (showAutoCalibrationDialog) {
+        AutoCalibrationCameraDialog(
+            onDismissRequest = { showAutoCalibrationDialog = false },
+            settingsViewModel = settingsViewModel
         )
     }
     
@@ -516,7 +524,8 @@ fun SettingsModal(
                                         settingsViewModel = settingsViewModel,
                                         expanded = expandedSection == "colormix",
                                         onHeaderClick = { expandedSection = if (expandedSection == "colormix") "" else "colormix" },
-                                        onEditKSValues = { showKubelkaMunkSettings = true }
+                                        onEditKSValues = { showKubelkaMunkSettings = true },
+                                        onOpenAutoCalibration = { showAutoCalibrationDialog = true }
                                     )
                                 }
                                 2 -> { // System

@@ -461,7 +461,8 @@ fun ColorMixingSection(
     settingsViewModel: SettingsViewModel,
     expanded: Boolean,
     onHeaderClick: () -> Unit,
-    onEditKSValues: () -> Unit
+    onEditKSValues: () -> Unit,
+    onOpenAutoCalibration: () -> Unit
 ) {
     Column {
         SettingsSectionHeader(
@@ -512,6 +513,16 @@ fun ColorMixingSection(
                             modifier = Modifier.fillMaxWidth()
                         ) {
                             Text("Edit K/S Values")
+                        }
+                        
+                        Button(
+                            onClick = onOpenAutoCalibration,
+                            modifier = Modifier.fillMaxWidth(),
+                            colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.secondary)
+                        ) {
+                            Icon(Icons.Default.CameraAlt, null, modifier = Modifier.size(18.dp))
+                            Spacer(Modifier.width(8.dp))
+                            Text("Auto-Calibrate (Camera)")
                         }
 
                         HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
