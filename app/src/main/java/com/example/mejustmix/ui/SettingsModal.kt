@@ -414,13 +414,16 @@ fun SettingsModal(
                     selectedTabIndex = selectedTabIndex,
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(bottom = 16.dp)
+                        .padding(bottom = 16.dp),
+                    compact = true
                 ) {
                     tabs.forEachIndexed { index, title ->
                         ModernPillTab(
                             selected = selectedTabIndex == index,
                             onClick = { selectedTabIndex = index },
-                            text = title
+                            text = title,
+                            compact = true,
+                            alwaysShowText = true
                         )
                     }
                 }

@@ -461,7 +461,7 @@ private fun copyUriToCache(context: Context, sourceUri: Uri): Uri? {
  * In-memory LRU cache for decoded bitmaps.
  * Sized to ~1/8 of available memory, holds recently viewed images.
  */
-private object BitmapCache {
+private object LocalBitmapCache {
     private val maxMemory = (Runtime.getRuntime().maxMemory() / 1024).toInt()
     private val cacheSize = maxMemory / 8 // Use 1/8th of available memory
     
@@ -484,7 +484,7 @@ private object BitmapCache {
  */
 private suspend fun loadOptimizedBitmap(context: Context, uri: Uri): Bitmap? {
     // Check cache first (fast path)
-    BitmapCache.get(uri)?.let { return it }
+    LocalBitmapCache.get(uri)?.let { return it }
     
     // Decode on IO thread
     return withContext(Dispatchers.IO) {
@@ -526,7 +526,7 @@ private suspend fun loadOptimizedBitmap(context: Context, uri: Uri): Bitmap? {
             }
             
             // Cache the result
-            result?.let { BitmapCache.put(uri, it) }
+            result?.let { LocalBitmapCache.put(uri, it) }
             
             result
         } catch (e: Exception) {

@@ -112,17 +112,19 @@ fun RowScope.ModernPillTab(
     icon: ImageVector? = null,
     compact: Boolean = false,
     selectedContentColor: Color = MaterialTheme.colorScheme.onPrimary,
-    unselectedContentColor: Color = MaterialTheme.colorScheme.onSurfaceVariant
+    unselectedContentColor: Color = MaterialTheme.colorScheme.onSurfaceVariant,
+    alwaysShowText: Boolean = false
 ) {
     val contentColor = if (selected) selectedContentColor else unselectedContentColor
-    val showText = !compact || selected
+    val showText = !compact || selected || alwaysShowText
     
     if (compact) {
         // Compact mode: animated weight with bouncy spring
         val backgroundColor = if (selected) MaterialTheme.colorScheme.primary else Color.Transparent
         
-        // Animate the weight - selected gets 2.5x, unselected gets 1x
-        val targetWeight = if (selected) 2.5f else 1f
+        // Animate the weight - selected gets 2.5x (or 1.5x if text always shown), unselected gets 1x
+        val expansionRatio = if (alwaysShowText) 1.5f else 2.5f
+        val targetWeight = if (selected) expansionRatio else 1f
         val animatedWeight by animateFloatAsState(
             targetValue = targetWeight,
             animationSpec = spring(

@@ -142,14 +142,16 @@ fun Library(mixViewModel: MixViewModel) {
             // Pill-shaped Library Tabs
             ModernPillTabRow(
                 selectedTabIndex = selectedTab,
-                modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp)
+                modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp),
+                compact = true
             ) {
                 tabs.forEachIndexed { index, title ->
                     ModernPillTab(
                         selected = selectedTab == index,
                         onClick = { selectedTab = index },
                         text = title,
-                        icon = if (index == 0) Icons.Outlined.Palette else Icons.Outlined.PhotoLibrary
+                        icon = if (index == 0) Icons.Outlined.Palette else Icons.Outlined.PhotoLibrary,
+                        compact = true
                     )
                 }
             }

@@ -133,8 +133,8 @@ fun VisualizerCard(
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
             // Pill-shaped TabRow for Wheel/Photo/Camera/Sensor
-            // Use compact mode (icon-only for unselected) when 4+ tabs
-            val useCompactTabs = tabs.size >= 4
+            // Always use compact mode (icon-only for unselected) as per user request
+            val useCompactTabs = true
             
             ModernPillTabRow(
                 selectedTabIndex = selectedTab,
