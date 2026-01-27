@@ -124,6 +124,7 @@ fun VisualizerCard(
             .fillMaxWidth()
             .padding(start = 16.dp, end = 16.dp, top = 16.dp, bottom = if (fillHeight) 16.dp else 0.dp)
             .then(if (fillHeight) Modifier.fillMaxHeight() else Modifier),
+        shape = RoundedCornerShape(24.dp),
         elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
     ) {
         Column(
