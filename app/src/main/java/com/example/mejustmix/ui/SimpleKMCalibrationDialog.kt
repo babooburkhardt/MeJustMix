@@ -43,7 +43,8 @@ fun SimpleKMCalibrationDialog(
     var pureKS by remember { mutableStateOf(currentKSColor) }
     
     // STATE: Mix Color (Step 2 - Optional)
-    var useMixCalibration by remember { mutableStateOf(false) }
+    // Initialize toggle based on whether S is already calibrated (not 1.0)
+    var useMixCalibration by remember { mutableStateOf(kotlin.math.abs(currentKSColor.s - 1.0f) > 0.001f) }
     var hexInputMix by remember { mutableStateOf("#FFFFFF") }
     var previewColorMix by remember { mutableStateOf(AndroidColor.WHITE) }
     var calculatedS by remember { mutableFloatStateOf(currentKSColor.s) }

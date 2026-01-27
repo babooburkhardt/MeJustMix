@@ -425,22 +425,66 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
     }
 
     fun updatePumpCalibration(axis: String, value: String) {
+        // Find pump before update
+        val targetPump = _uiState.value.pumps.find { it.axis == axis }
+        val oldCal = targetPump?.calibration?.toFloatOrNull() ?: 100f
+        val newCal = value.toFloatOrNull() ?: 100f
+        
         _uiState.update { currentState ->
             val updatedPumps = currentState.pumps.map { pump ->
                 if (pump.axis == axis) pump.copy(calibration = value) else pump
             }
             currentState.copy(pumps = updatedPumps)
         }
+        
+        // Auto-adjust pigment strength if calibration changed significantly
+        if (targetPump != null && oldCal > 0 && newCal > 0 && kotlin.math.abs(oldCal - newCal) > 0.1f) {
+            val ratio = newCal / oldCal
+            adjustPigmentStrengthForPump(targetPump.name, ratio)
+        }
+        
         saveSettings()
     }
     
     fun onPumpCalibrationChanged(pumpIndex: Int, newValue: String) {
+        val targetPump = _uiState.value.pumps.getOrNull(pumpIndex)
+        val oldCal = targetPump?.calibration?.toFloatOrNull() ?: 100f
+        val newCal = newValue.toFloatOrNull() ?: 100f
+        
         _uiState.update { state ->
             val newPumps = state.pumps.toMutableList()
-            newPumps[pumpIndex] = newPumps[pumpIndex].copy(calibration = newValue)
+            if (pumpIndex in newPumps.indices) {
+                newPumps[pumpIndex] = newPumps[pumpIndex].copy(calibration = newValue)
+            }
             state.copy(pumps = newPumps)
         }
+        
+        // Auto-adjust pigment strength
+        if (targetPump != null && oldCal > 0 && newCal > 0 && kotlin.math.abs(oldCal - newCal) > 0.1f) {
+            val ratio = newCal / oldCal
+            adjustPigmentStrengthForPump(targetPump.name, ratio)
+        }
+        
         saveSettings()
+    }
+
+    private fun adjustPigmentStrengthForPump(pumpName: String, ratio: Float) {
+        _uiState.update { state ->
+            val currentStrengths = state.pigmentStrengths
+            val newStrengths = when(pumpName) {
+                "Cyan" -> currentStrengths.copy(cyan = currentStrengths.cyan * ratio)
+                "Magenta" -> currentStrengths.copy(magenta = currentStrengths.magenta * ratio)
+                "Yellow" -> currentStrengths.copy(yellow = currentStrengths.yellow * ratio)
+                "Black" -> currentStrengths.copy(black = currentStrengths.black * ratio)
+                "White" -> currentStrengths.copy(white = currentStrengths.white * ratio)
+                else -> currentStrengths
+            }
+            state.copy(pigmentStrengths = newStrengths)
+        }
+        
+        val percentChange = ((ratio - 1f) * 100f).toInt()
+        val changeText = if (percentChange > 0) "+$percentChange%" else "$percentChange%"
+        showToast("Adjusted ${pumpName} strength by $changeText (to match flow change)")
     }
 
     fun updatePumpVolume(pumpIndex: Int, newVolume: Float) {
