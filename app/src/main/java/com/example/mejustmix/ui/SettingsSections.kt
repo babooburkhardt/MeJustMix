@@ -643,6 +643,7 @@ fun PulseSection(
                     if (pump != null) {
                         PulseTuningDialog(
                                 pump = pump,
+                                stepsPerPulse = settingsViewModel.getEffectiveStepsPerPulse(),
                                 isTuning = uiState.isTuning,
                                 tuningPhaseOffset = uiState.tuningPhaseOffset,
                                 tuningStrength = uiState.pulseSmoothingStrength,
@@ -836,6 +837,7 @@ fun PulseSection(
                                 PulseGeometryWizard(
                                     pump = uiState.pumps.getOrNull(wizardPumpIndex) ?: uiState.pumps.first(),
                                     pumpIndex = wizardPumpIndex,
+                                    stepsPerPulse = settingsViewModel.getEffectiveStepsPerPulse(),
                                     pillowLengthMm = uiState.pillowLengthMm,
                                     onJog = { steps ->
                                         settingsViewModel.jogPumpWithBacklash(wizardPumpIndex, steps)

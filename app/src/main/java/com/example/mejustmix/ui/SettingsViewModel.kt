@@ -751,11 +751,12 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
      */
     fun primePumpToHome(pumpIndex: Int) {
         val pump = _uiState.value.pumps.getOrNull(pumpIndex) ?: return
-        val stepsPerPulse = PulseModeCalculator.MotorSpecs.STEPS_PER_PULSE
+        // Use effective steps per pulse (MotorConfig if step-mode, else pump's value)
+        val stepsPerPulse = getEffectiveStepsPerPulse()
         
         // Calculate steps to move to reach home boundary
         val currentOffset = pump.pulseHomeOffset
-        val stepsToMove = (pump.stepsPerPulse - (currentOffset % pump.stepsPerPulse)) % pump.stepsPerPulse
+        val stepsToMove = (stepsPerPulse - (currentOffset % stepsPerPulse)) % stepsPerPulse
         
         // Don't move if already at home (or very close)
         if (stepsToMove < 1f) {
@@ -907,7 +908,7 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
      */
     fun dispensePulsesForCalibration(pumpIndex: Int, pulseCount: Int) {
         val pump = _uiState.value.pumps.getOrNull(pumpIndex) ?: return
-        val stepsPerPulse = if (pump.stepsPerPulse > 0) pump.stepsPerPulse else PulseModeCalculator.MotorSpecs.STEPS_PER_PULSE
+        val stepsPerPulse = getEffectiveStepsPerPulse()
         val totalSteps = (pulseCount * stepsPerPulse).toInt()
         
         // Send G-code command to dispense
@@ -1291,16 +1292,27 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
      * When enabled, FluidNC is configured with $10X=1.0 (1 step = 1 unit).
      */
     fun toggleStepBasedGCode(enabled: Boolean) {
-        _uiState.update { 
-            it.copy(
+        _uiState.update { state ->
+            val newState = state.copy(
                 useStepBasedGCode = enabled,
                 fluidNCConfigSynced = false  // Mark as needing sync
-            ) 
+            )
+            
+            // Push Propagation: Update all pumps with new step configuration
+            if (enabled) {
+                val newStepCount = newState.motorConfig.stepsPerPulse
+                val updatedPumps = newState.pumps.map { pump ->
+                    pump.copy(stepsPerPulse = newStepCount)
+                }
+                newState.copy(pumps = updatedPumps)
+            } else {
+                newState
+            }
         }
         saveSettings()
         
         if (enabled) {
-            showToast("Step-based G-code enabled. Remember to sync with FluidNC!")
+            showToast("Step-based G-code enabled & synced to all pumps.")
         }
     }
     
@@ -1309,11 +1321,22 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
      * This affects step calculations for all pumps.
      */
     fun updateMotorConfig(config: MotorConfig) {
-        _uiState.update { 
-            it.copy(
+        _uiState.update { state -> 
+            val newState = state.copy(
                 motorConfig = config,
                 fluidNCConfigSynced = false  // Mark as needing sync
-            ) 
+            )
+            
+            // Push Propagation: If step-based is active, auto-update all pumps
+            if (state.useStepBasedGCode) {
+                val newStepCount = config.stepsPerPulse
+                val updatedPumps = newState.pumps.map { pump ->
+                    pump.copy(stepsPerPulse = newStepCount)
+                }
+                newState.copy(pumps = updatedPumps)
+            } else {
+                newState
+            }
         }
         saveSettings()
     }

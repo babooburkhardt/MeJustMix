@@ -45,6 +45,7 @@ data class CalibrationRun(
 fun PulseCalibrationDialog(
     pump: PumpConfig,
     pumpIndex: Int,
+    stepsPerPulse: Float,  // Receive effective steps per pulse
     onDismiss: () -> Unit,
     onSave: (mlPerPulse: Float) -> Unit,
     onDispensePulses: (pulseCount: Int) -> Unit,
@@ -56,17 +57,10 @@ fun PulseCalibrationDialog(
     var trackedOffsetSteps by remember { 
         mutableStateOf(
             run {
-                val stepsPerPulse = PulseModeCalculator.calculateStepsPerPulse(1.8f, 4f, 3)
                 (pump.lastKnownAngle / 360f) * stepsPerPulse
             }
         ) 
     }
-    
-    val stepsPerPulse = PulseModeCalculator.calculateStepsPerPulse(
-        stepAngle = 1.8f,
-        gearReduction = 4f,
-        rollerCount = 3
-    )
 
     Dialog(
         onDismissRequest = onDismiss,

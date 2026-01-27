@@ -293,6 +293,7 @@ fun SettingsModal(
             PulseCalibrationDialog(
                 pump = pump,
                 pumpIndex = index,
+                stepsPerPulse = settingsViewModel.getEffectiveStepsPerPulse(),
                 onDismiss = { showPulseCalibrationForIndex = null },
                 onSave = { mlPerPulse ->
                     settingsViewModel.updatePumpMlPerPulse(index, mlPerPulse)
@@ -315,6 +316,7 @@ fun SettingsModal(
         if (pump != null) {
             RollerPositionDialog(
                 pump = pump,
+                stepsPerPulse = settingsViewModel.getEffectiveStepsPerPulse(),
                 onDismiss = { showRollerCalibrationForIndex = null },
                 onSavePosition = { offsetSteps ->
                     settingsViewModel.savePumpAngle(index, offsetSteps, null)

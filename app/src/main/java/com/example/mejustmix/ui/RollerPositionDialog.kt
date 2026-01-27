@@ -22,12 +22,13 @@ import androidx.compose.ui.window.DialogProperties
 @Composable
 fun RollerPositionDialog(
     pump: PumpConfig,
+    stepsPerPulse: Float,
     onDismiss: () -> Unit,
     onSavePosition: (offsetSteps: Float) -> Unit
 ) {
     // Initialize with current known position (convert angle to steps)
     // steps = (angle / 360) * stepsPerPulse
-    val initialSteps = ((pump.lastKnownAngle ?: 0f) / 360f) * pump.stepsPerPulse
+    val initialSteps = ((pump.lastKnownAngle ?: 0f) / 360f) * stepsPerPulse
     var currentOffset by remember { mutableFloatStateOf(initialSteps) }
     
     Dialog(

@@ -33,6 +33,7 @@ import kotlin.math.abs
 fun PulseGeometryWizard(
     pump: PumpConfig,
     pumpIndex: Int,
+    stepsPerPulse: Float,
     pillowLengthMm: Float,
     onJog: (steps: Float) -> Unit,
     onSave: (taperStartSteps: Float, taperLengthMm: Float, fullDiameterMm: Float) -> Unit,
@@ -43,7 +44,7 @@ fun PulseGeometryWizard(
     var taperStartSteps by remember { mutableStateOf<Float?>(null) }
     var taperEndSteps by remember { mutableStateOf<Float?>(null) }
     
-    val stepsPerPulse = pump.stepsPerPulse.takeIf { it > 1.0f } ?: 200f
+    // stepsPerPulse is now passed in
     val scope = rememberCoroutineScope()
     
     // Convert steps to degrees

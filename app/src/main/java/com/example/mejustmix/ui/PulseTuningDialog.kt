@@ -24,6 +24,7 @@ import androidx.compose.ui.window.DialogProperties
 @Composable
 fun PulseTuningDialog(
     pump: PumpConfig,
+    stepsPerPulse: Float,
     isTuning: Boolean,
     tuningPhaseOffset: Float,
     tuningStrength: Float,
@@ -38,7 +39,7 @@ fun PulseTuningDialog(
     onDismiss: () -> Unit
 ) {
     // Calculate derived values in real-time
-    val stepsPerPulse = pump.stepsPerPulse.takeIf { it > 1.0f } ?: 200f
+    // val stepsPerPulse is now passed in
     val phaseShiftSteps = (tuningPhaseOffset / 360f) * stepsPerPulse
     val newHomeOffset = currentHomeOffset - phaseShiftSteps
     
