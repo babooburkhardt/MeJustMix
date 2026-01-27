@@ -135,32 +135,47 @@ fun MotorSettingsSection(
                         color = Color.Gray
                     )
                     
+                    // Row 1: 1x, 2x, 4x, 8x
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.spacedBy(4.dp)
                     ) {
-                        MotorConfig.MICROSTEP_OPTIONS.filter { it <= 32 }.forEach { microsteps ->
+                        MotorConfig.MICROSTEP_OPTIONS.filter { it <= 8 }.forEach { microsteps ->
                             FilterChip(
                                 selected = motorConfig.microsteps == microsteps,
                                 onClick = { 
                                     onMotorConfigChange(motorConfig.copy(microsteps = microsteps))
                                 },
-                                label = { Text("${microsteps}x") },
+                                label = { 
+                                    Text(
+                                        "${microsteps}x", 
+                                        maxLines = 1,
+                                        style = MaterialTheme.typography.labelMedium
+                                    ) 
+                                },
                                 modifier = Modifier.weight(1f)
                             )
                         }
                     }
+                    
+                    // Row 2: 16x, 32x, 64x, 128x
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.spacedBy(4.dp)
                     ) {
-                        MotorConfig.MICROSTEP_OPTIONS.filter { it > 32 }.forEach { microsteps ->
+                        MotorConfig.MICROSTEP_OPTIONS.filter { it in 16..128 }.forEach { microsteps ->
                             FilterChip(
                                 selected = motorConfig.microsteps == microsteps,
                                 onClick = { 
                                     onMotorConfigChange(motorConfig.copy(microsteps = microsteps))
                                 },
-                                label = { Text("${microsteps}x") },
+                                label = { 
+                                    Text(
+                                        "${microsteps}x", 
+                                        maxLines = 1,
+                                        style = MaterialTheme.typography.labelMedium
+                                    ) 
+                                },
                                 modifier = Modifier.weight(1f)
                             )
                         }
