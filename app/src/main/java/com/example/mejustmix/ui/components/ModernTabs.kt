@@ -128,7 +128,7 @@ fun RowScope.ModernPillTab(
         val animatedWeight by animateFloatAsState(
             targetValue = targetWeight,
             animationSpec = spring(
-                dampingRatio = Spring.DampingRatioMediumBouncy,
+                dampingRatio = 0.65f, // Custom "Fun but Controlled" bounce (Between Medium 0.5 and Low 0.75)
                 stiffness = Spring.StiffnessMedium
             ),
             label = "tabWeight"
