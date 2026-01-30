@@ -63,17 +63,19 @@ We use **FluidNC** for motion control. The app supports **two connection modes**
 4.  Select the latest firmware version.
 5.  **Choose your variant:**
     - **For Bluetooth:** Select the **"Bluetooth"** or **"BT"** variant
+        ⚠️ **Note:** bluetooth has some troubleshooting to do as the fluid installer is bugged. even manually flashing is unsuccessful. ive done all testing so far with wifi.
     - **For WiFi:** Select the **"Wifi"** variant
-    - ⚠️ **Note:** bluetooth has some troubleshooting to do as the fluid installer is bugged. even manually flashing is unsuccessful. ive done all testing so far with wifi.
+        ⚠️ **Note:** make sure to enable webUi3 for a simple setup
+   
 6.  Click **Install**.
 
 ### 2. Configure the Machine
 1.  Download the [`config.yaml`](config.yaml) file.
-2.  In the Web Installer (or FluidNC Web UI), go to the **Config** tab.
-3.  Upload the `.yaml` file.
-4.  **If using WiFi:** Locate and write down the IP address (should be on the wifi page).
-5.  **If using Bluetooth:** The device will advertise as "FluidNC" by default after a reboot.
-6.  Restart the board.
+2.  In the Web Installer (or FluidNC Web UI), go to the **File browser** tab.
+3.  Click Upload and then locate the `.yaml` file in your file browser.
+5.  **If using WiFi:** go to the WiFi tab. in SSID, find your home wifi in the drapdown magnifying glass menu. enter your wifi pass word in the password box below SSID. click save
+      **NOTE** after a short wait it should show its connected with "current wifi connection" locate and write down the IP address (this is the number the app uses to connect).
+6.  **If using Bluetooth:** The device will advertise as "FluidNC" by default after a reboot.
 
 *Note: If your pumps run backwards, flip the motor plug or change the direction pin in the config.*
 
