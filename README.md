@@ -64,7 +64,7 @@ We use **FluidNC** for motion control. The app supports **two connection modes**
 5.  **Choose your variant:**
     - **For Bluetooth:** Select the **"Bluetooth"** or **"BT"** variant
     - **For WiFi:** Select the **"Wifi"** variant
-    - ⚠️ **Note:** The board cannot run both simultaneously. BLE will auto connect to app, but requires location permissions to find it. WI-FI requires no permission, but adds an extra setup step.
+    - ⚠️ **Note:** bluetooth has some troubleshooting to do as the fluid installer is bugged. even manually flashing is unsuccessful. ive done all testing so far with wifi.
 6.  Click **Install**.
 
 ### 2. Configure the Machine
